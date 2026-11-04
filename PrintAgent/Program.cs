@@ -33,10 +33,17 @@ internal sealed class AgentConfig
     public string TemplatePath { get; set; } = "template.xlsx";
     public int PollSeconds { get; set; } = 3;
 }
+internal sealed class PrintCard
+{
+    public string Name { get; set; } = "";
+    public string Color { get; set; } = "";
+    public string Quantity { get; set; } = "";
+}
 internal sealed class PrintJob
 {
     public string JobId { get; set; } = "";
     public int Copies { get; set; } = 1;
+    public List<PrintCard>? Cards { get; set; }
     public Dictionary<string, string?> Cells { get; set; } = new();
 }
 internal static class Program
@@ -118,7 +125,7 @@ internal static class Program
         var job = JsonSerializer.Deserialize<PrintJob>(json, JsonOptions)
             ?? throw new InvalidDataException("Dữ liệu lệnh in trống.");
         if (string.IsNullOrWhiteSpace(job.JobId) || job.JobId.Length > 128 || job.Copies < 1 || job.Copies > 10 ||
-            job.Cells is null || job.Cells.Count > 100)
+            job.Cells is null || job.Cells.Count > 100 || (job.Cards?.Count ?? 0) > 8)
             throw new InvalidDataException("JobId, Copies hoặc Cells không hợp lệ.");
         return job;
     }
@@ -158,6 +165,23 @@ internal static class Program
             excel.AutomationSecurity = 3; // ForceDisable: không chạy macro khi tự động mở file
             workbookObject = excel.Workbooks.Open(template, ReadOnly: true, UpdateLinks: 0);
             dynamic workbook = workbookObject;
+            // Mau 部材カード 原紙: 8 the, thu tu tren-trai sang phai, duoi-trai sang phai.
+            // Ghi vao o dau tien cua moi vung merged cell de Excel 2013 nhan du lieu.
+            if (job.Cards is { Count: > 0 })
+            {
+                string[] names = { "B8", "H8", "N8", "T8", "B32", "H32", "N32", "T32" };
+                string[] colors = { "B12", "H12", "N12", "T12", "B36", "H36", "N36", "T36" };
+                string[] quantities = { "B16", "H16", "N16", "T16", "B40", "H40", "N40", "T40" };
+                // Neu job co it hon 8 the, xoa noi dung o the con lai tren ban in tam.
+                for (int i = 0; i < 8; i++)
+                {
+                    var card = i < job.Cards.Count ? job.Cards[i] : new PrintCard();
+                    if (card is null) throw new InvalidDataException("Thong tin the khong hop le.");
+                    job.Cells["原紙!" + names[i]] = card.Name ?? "";
+                    job.Cells["原紙!" + colors[i]] = card.Color ?? "";
+                    job.Cells["原紙!" + quantities[i]] = card.Quantity ?? "";
+                }
+            }
             foreach (var (location, value) in job.Cells)
             {
                 var separator = location.LastIndexOf('!');
