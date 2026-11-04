@@ -19,7 +19,8 @@ internal static class Program
 
 internal sealed class SettingsForm : Form
 {
-    private readonly TextBox url = new(), token = new(), template = new();
+    private const string DefaultApiUrl = "https://machine-control.maedandoris.workers.dev";
+    private readonly TextBox url = new() { Text = DefaultApiUrl }, token = new(), template = new();
     private readonly ComboBox printer = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly NumericUpDown seconds = new();
     private readonly string iniPath = Path.Combine(AppContext.BaseDirectory, "config.ini");
@@ -108,7 +109,7 @@ internal sealed class SettingsForm : Form
             var key = line[..idx].Trim(); var value = line[(idx + 1)..].Trim();
             switch (key.ToLowerInvariant())
             {
-                case "apibaseurl": url.Text = value; break;
+                case "apibaseurl": if (!string.IsNullOrWhiteSpace(value)) url.Text = value; break;
                 case "agenttoken": token.Text = value; break;
                 case "printername": RefreshPrinters(value); break;
                 case "templatepath": template.Text = value; break;
