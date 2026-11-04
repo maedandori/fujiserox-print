@@ -68,3 +68,11 @@ Ghi chú: vị trí `T816` được hiểu thành `T16`. Khi job có `cards`, Ag
 Lệnh mẫu: `{"jobId":"123","copies":1,"cards":[{"name":"部材 A","color":"白","quantity":"100"}],"cells":{}}`.
 
 **Lưu ý:** Template XLSX đính kèm trong chat chưa được tự động đưa lên GitHub (repo chỉ chứa mã nguồn). Hãy sao chép file mẫu lên máy Windows và chọn đường dẫn bằng Print-Settings.exe. Cần kiểm tra in giấy thật để chắc chắn căn lề, kích thước trang và máy in phù hợp.
+
+## Đánh số thứ tự thẻ và in nhiều trang
+
+Print Agent tự đánh số lần lượt cho từng thẻ: `E20`, `K20`, `Q20`, `W20`, `E44`, `K44`, `Q44`, `W44`. Các ô tương ứng với thẻ 1–8. Nếu có 10 thẻ, trang 1 có số 1–8 và trang 2 có số 9–10, sáu vị trí còn lại trống. Mỗi trang mở template mới ở chế độ ReadOnly, không sửa file XLSX gốc.
+
+Trong JSON, dùng `cards` là danh sách toàn bộ thẻ (tối đa 800), `startNumber` mặc định bằng 1, có thể đặt ví dụ 101 để bắt đầu từ số 101. `copies` là số bản sao của mỗi trang; số thứ tự **không tăng** giữa các bản sao cùng một trang. Nếu không cung cấp `cards`, Agent giữ chế độ cũ `cells` và không tự đánh số.
+
+Lưu ý: Với các lệnh nhiều trang, nếu gặp lỗi giữa chừng, một số trang có thể đã được gửi tới spooler. Cần đối chiếu trước khi in lại để tránh in trùng.
