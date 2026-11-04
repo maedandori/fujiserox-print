@@ -53,7 +53,8 @@ internal static class Program
         Console.WriteLine("Chạy trong phiên Windows có người dùng đăng nhập, không chạy dưới SYSTEM.");
         try
         {
-            var config = IniConfig.Load(Path.Combine(Root, "config.ini"));\n            if (args.Contains("--test", StringComparer.OrdinalIgnoreCase))
+            var config = IniConfig.Load(Path.Combine(Root, "config.ini"));
+            if (args.Contains("--test", StringComparer.OrdinalIgnoreCase))
             {
                 var testPath = Path.Combine(Root, "sample-job.json");
                 var job = ReadJob(File.ReadAllText(testPath));
