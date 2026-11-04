@@ -1,0 +1,40 @@
+name: Build Machine-Control Print Agent
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'PrintAgent/**'
+      - '.github/workflows/build-print-agent.yml'
+      - 'README.md'
+permissions:
+  contents: read
+jobs:
+  build:
+    name: Build EXE cho Windows 10
+    runs-on: windows-2022
+    steps:
+      - name: Lấy mã nguồn
+        uses: actions/checkout@v4
+      - name: Cài .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Kiểm tra và đóng gói EXE độc lập
+        shell: pwsh
+        run: |
+          dotnet restore PrintAgent/PrintAgent.csproj
+          dotnet publish PrintAgent/PrintAgent.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o publish
+          if (-not (Test-Path publish/Machine-Control-Print-Agent.exe)) { throw "Không tìm thấy EXE sau build" }
+      - name: Đóng gói hướng dẫn và cấu hình mẫu
+        shell: pwsh
+        run: |
+          Copy-Item PrintAgent/config.example.json publish/config.example.json
+          Copy-Item PrintAgent/sample-job.json publish/sample-job.json
+          Copy-Item README.md publish/README.md
+      - name: Tải artifact ứng dụng
+        uses: actions/upload-artifact@v4
+        with:
+          name: Machine-Control-Print-Agent-Win10-x64
+          path: publish/
+          retention-days: 30
