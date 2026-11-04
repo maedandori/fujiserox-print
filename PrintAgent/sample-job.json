@@ -1,8 +1,47 @@
 {
-  "jobId": "local-test-001",
+  "jobId": "test-buzai-card-001",
   "copies": 1,
-  "cells": {
-    "Sheet1!B3": "KHUON_MAU",
-    "Sheet1!E3": "15"
-  }
+  "cards": [
+    {
+      "name": "部材 A",
+      "color": "白",
+      "quantity": "100"
+    },
+    {
+      "name": "部材 B",
+      "color": "黒",
+      "quantity": "200"
+    },
+    {
+      "name": "部材 C",
+      "color": "青",
+      "quantity": "50"
+    },
+    {
+      "name": "部材 D",
+      "color": "赤",
+      "quantity": "75"
+    },
+    {
+      "name": "部材 E",
+      "color": "緑",
+      "quantity": "300"
+    },
+    {
+      "name": "部材 F",
+      "color": "黄",
+      "quantity": "120"
+    },
+    {
+      "name": "部材 G",
+      "color": "白",
+      "quantity": "80"
+    },
+    {
+      "name": "部材 H",
+      "color": "黒",
+      "quantity": "60"
+    }
+  ],
+  "cells": {}
 }
