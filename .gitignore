@@ -1,0 +1,9 @@
+**/bin/
+**/obj/
+publish/
+config.json
+**/config.json
+*.xlsx
+*.xlsm
+*.tmp
+*.log
