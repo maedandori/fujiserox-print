@@ -1,0 +1,8 @@
+{
+  "jobId": "local-test-001",
+  "copies": 1,
+  "cells": {
+    "Sheet1!B3": "KHUON_MAU",
+    "Sheet1!E3": "15"
+  }
+}
