@@ -1,0 +1,199 @@
+using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Runtime.InteropServices;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+
+internal sealed class AgentConfig
+{
+    public string ApiBaseUrl { get; set; } = "";
+    public string AgentToken { get; set; } = "";
+    public string PrinterName { get; set; } = "";
+    public string TemplatePath { get; set; } = "template.xlsx";
+    public int PollSeconds { get; set; } = 3;
+}
+internal sealed class PrintJob
+{
+    public string JobId { get; set; } = "";
+    public int Copies { get; set; } = 1;
+    public Dictionary<string, string?> Cells { get; set; } = new();
+}
+internal static class Program
+{
+    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
+    private static readonly Regex AddressPattern = new(@"^\$?[A-Z]{1,3}\$?[1-9][0-9]{0,6}$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static string Root => AppContext.BaseDirectory;
+
+    [STAThread]
+    private static int Main(string[] args)
+    {
+        Console.OutputEncoding = System.Text.Encoding.UTF8;
+        Console.WriteLine("Machine-Control Print Agent 1.0 - Windows 10 / Excel 2013");
+        Console.WriteLine("Chạy trong phiên Windows có người dùng đăng nhập, không chạy dưới SYSTEM.");
+        try
+        {
+            var path = Path.Combine(Root, "config.json");
+            if (!File.Exists(path))
+                throw new InvalidOperationException("Thiếu config.json. Sao chép config.example.json thành config.json và chỉnh TemplatePath.");
+            var config = JsonSerializer.Deserialize<AgentConfig>(File.ReadAllText(path), JsonOptions)
+                ?? throw new InvalidOperationException("config.json không hợp lệ.");
+            if (args.Contains("--test", StringComparer.OrdinalIgnoreCase))
+            {
+                var testPath = Path.Combine(Root, "sample-job.json");
+                var job = ReadJob(File.ReadAllText(testPath));
+                PrintExcel(config, job);
+                Console.WriteLine("Đã gửi bản in thử đến Windows Print Spooler (chưa xác nhận giấy đã in xong).");
+                return 0;
+            }
+            if (string.IsNullOrWhiteSpace(config.ApiBaseUrl) || string.IsNullOrWhiteSpace(config.AgentToken))
+                throw new InvalidOperationException("Chưa cấu hình API Cloudflare và AgentToken. Dùng --test để in thử tại máy.");
+            if (!Uri.TryCreate(config.ApiBaseUrl, UriKind.Absolute, out var baseUri) ||
+                (baseUri.Scheme != Uri.UriSchemeHttps && !(baseUri.IsLoopback && baseUri.Scheme == Uri.UriSchemeHttp)))
+                throw new InvalidOperationException("ApiBaseUrl phải là HTTPS (ngoại lệ HTTP localhost để kiểm thử).");
+            if (config.PollSeconds < 2 || config.PollSeconds > 300)
+                throw new InvalidOperationException("PollSeconds phải nằm trong khoảng 2–300.");
+
+            using var client = new HttpClient { BaseAddress = new Uri(config.ApiBaseUrl.TrimEnd('/') + "/"), Timeout = TimeSpan.FromSeconds(30) };
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", config.AgentToken);
+            Console.WriteLine("Đã bật chế độ nhận lệnh. Bấm Ctrl+C để thoát.");
+            while (true)
+            {
+                try
+                {
+                    using var response = client.GetAsync("api/print-agent/jobs/next").GetAwaiter().GetResult();
+                    if (response.StatusCode == HttpStatusCode.NoContent)
+                    {
+                        Thread.Sleep(TimeSpan.FromSeconds(config.PollSeconds));
+                        continue;
+                    }
+                    response.EnsureSuccessStatusCode();
+                    var json = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
+                    var job = ReadJob(json);
+                    Console.WriteLine($"Nhận yêu cầu in: {job.JobId}");
+                    try
+                    {
+                        PrintExcel(config, job);
+                        Report(client, job.JobId, "submitted", null);
+                        Console.WriteLine($"Đã gửi đến hàng đợi in Windows: {job.JobId}");
+                    }
+                    catch (Exception error)
+                    {
+                        Console.Error.WriteLine("Lỗi in: " + error.Message);
+                        Report(client, job.JobId, "failed", error.Message);
+                    }
+                }
+                catch (Exception error)
+                {
+                    Console.Error.WriteLine("Không lấy được lệnh in: " + error.Message);
+                }
+                Thread.Sleep(TimeSpan.FromSeconds(config.PollSeconds));
+            }
+        }
+        catch (Exception error)
+        {
+            Console.Error.WriteLine("Lỗi cấu hình: " + error.Message);
+            return 1;
+        }
+    }
+
+    private static PrintJob ReadJob(string json)
+    {
+        var job = JsonSerializer.Deserialize<PrintJob>(json, JsonOptions)
+            ?? throw new InvalidDataException("Dữ liệu lệnh in trống.");
+        if (string.IsNullOrWhiteSpace(job.JobId) || job.JobId.Length > 128 || job.Copies < 1 || job.Copies > 10 ||
+            job.Cells is null || job.Cells.Count > 100)
+            throw new InvalidDataException("JobId, Copies hoặc Cells không hợp lệ.");
+        return job;
+    }
+
+    private static void Report(HttpClient client, string id, string status, string? error)
+    {
+        try
+        {
+            // Backend cần xác minh job đã được claim duy nhất trước khi cấp cho Agent.
+            var path = "api/print-agent/jobs/" + Uri.EscapeDataString(id) + "/status";
+            using var response = client.PostAsJsonAsync(path, new { status, error }).GetAwaiter().GetResult();
+            response.EnsureSuccessStatusCode();
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine("Không báo được trạng thái lên Cloudflare: " + exception.Message);
+            Console.Error.WriteLine("Không tự in lại lệnh này để tránh in trùng. Cần đối chiếu trên máy tính.");
+        }
+    }
+
+    private static void PrintExcel(AgentConfig config, PrintJob job)
+    {
+        var template = Path.IsPathRooted(config.TemplatePath) ? config.TemplatePath : Path.Combine(Root, config.TemplatePath);
+        template = Path.GetFullPath(template);
+        if (!File.Exists(template) || !template.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+            throw new FileNotFoundException("Không tìm thấy template XLSX: " + template);
+        var excelType = Type.GetTypeFromProgID("Excel.Application")
+            ?? throw new InvalidOperationException("Không tìm thấy Microsoft Excel (Office 2013) trên máy.");
+        object? excelObject = null, workbookObject = null;
+        try
+        {
+            excelObject = Activator.CreateInstance(excelType)
+                ?? throw new InvalidOperationException("Không thể khởi chạy Excel.");
+            dynamic excel = excelObject;
+            excel.Visible = false;
+            excel.DisplayAlerts = false;
+            excel.AutomationSecurity = 3; // ForceDisable: không chạy macro khi tự động mở file
+            workbookObject = excel.Workbooks.Open(template, ReadOnly: true, UpdateLinks: 0);
+            dynamic workbook = workbookObject;
+            foreach (var (location, value) in job.Cells)
+            {
+                var separator = location.LastIndexOf('!');
+                var sheetName = separator < 0 ? "" : location[..separator].Trim(' ', '\'');
+                var address = separator < 0 ? location : location[(separator + 1)..];
+                if (!AddressPattern.IsMatch(address) || sheetName.Length > 31)
+                    throw new InvalidDataException("Vị trí ô không hợp lệ: " + location);
+                object? sheetObject = null, rangeObject = null;
+                try
+                {
+                    sheetObject = string.IsNullOrEmpty(sheetName) ? workbook.Worksheets[1] : workbook.Worksheets[sheetName];
+                    dynamic sheet = sheetObject!;
+                    rangeObject = sheet.Range[address];
+                    dynamic cell = rangeObject!;
+                    if ((value?.Length ?? 0) > 1000) throw new InvalidDataException("Nội dung ô quá dài: " + location);
+                    cell.Value2 = value ?? "";
+                }
+                finally
+                {
+                    Release(rangeObject);
+                    Release(sheetObject);
+                }
+            }
+            // Nếu PrinterName để trống: dùng máy in mặc định của Windows.
+            // Excel.ActivePrinter có thể yêu cầu tên kèm cổng NeXX:, nên ưu tiên máy in mặc định.
+            if (string.IsNullOrWhiteSpace(config.PrinterName))
+                workbook.PrintOut(Copies: job.Copies);
+            else
+                workbook.PrintOut(Copies: job.Copies, ActivePrinter: config.PrinterName);
+        }
+        finally
+        {
+            if (workbookObject != null)
+            {
+                try { ((dynamic)workbookObject).Close(SaveChanges: false); }
+                catch (Exception ex) { Console.Error.WriteLine("Không đóng được workbook: " + ex.Message); }
+                Release(workbookObject);
+            }
+            if (excelObject != null)
+            {
+                try { ((dynamic)excelObject).Quit(); }
+                catch (Exception ex) { Console.Error.WriteLine("Không thoát được Excel: " + ex.Message); }
+                Release(excelObject);
+            }
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+        }
+    }
+
+    private static void Release(object? value)
+    {
+        if (value is not null && Marshal.IsComObject(value))
+            Marshal.FinalReleaseComObject(value);
+    }
+}
