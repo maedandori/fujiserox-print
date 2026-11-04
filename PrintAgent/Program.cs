@@ -5,6 +5,26 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
+internal static class IniConfig
+{
+    public static AgentConfig Load(string path)
+    {
+        if (!File.Exists(path)) throw new FileNotFoundException("Thiếu config.ini. Chạy Print-Settings.exe trước.", path);
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var raw in File.ReadAllLines(path, System.Text.Encoding.UTF8))
+        {
+            var line = raw.Trim();
+            if (line.Length == 0 || line.StartsWith(';') || line.StartsWith('#') || line.StartsWith('[')) continue;
+            int i = line.IndexOf('=');
+            if (i > 0) values[line[..i].Trim()] = line[(i + 1)..].Trim();
+        }
+        string Get(string key, string fallback = "") => values.TryGetValue(key, out var v) ? v : fallback;
+        if (!int.TryParse(Get("PollSeconds", "3"), out int seconds))
+            throw new InvalidDataException("PollSeconds phải là số nguyên.");
+        return new AgentConfig { ApiBaseUrl = Get("ApiBaseUrl"), AgentToken = Get("AgentToken"),
+            PrinterName = Get("PrinterName"), TemplatePath = Get("TemplatePath", "template.xlsx"), PollSeconds = seconds };
+    }
+}
 internal sealed class AgentConfig
 {
     public string ApiBaseUrl { get; set; } = "";
@@ -33,12 +53,7 @@ internal static class Program
         Console.WriteLine("Chạy trong phiên Windows có người dùng đăng nhập, không chạy dưới SYSTEM.");
         try
         {
-            var path = Path.Combine(Root, "config.json");
-            if (!File.Exists(path))
-                throw new InvalidOperationException("Thiếu config.json. Sao chép config.example.json thành config.json và chỉnh TemplatePath.");
-            var config = JsonSerializer.Deserialize<AgentConfig>(File.ReadAllText(path), JsonOptions)
-                ?? throw new InvalidOperationException("config.json không hợp lệ.");
-            if (args.Contains("--test", StringComparer.OrdinalIgnoreCase))
+            var config = IniConfig.Load(Path.Combine(Root, "config.ini"));\n            if (args.Contains("--test", StringComparer.OrdinalIgnoreCase))
             {
                 var testPath = Path.Combine(Root, "sample-job.json");
                 var job = ReadJob(File.ReadAllText(testPath));
