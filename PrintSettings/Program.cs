@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.IO;
+using System.Drawing.Printing;
 using System.Linq;
 using System.Text;
 using System.Windows.Forms;
@@ -18,7 +19,8 @@ internal static class Program
 
 internal sealed class SettingsForm : Form
 {
-    private readonly TextBox url = new(), token = new(), printer = new(), template = new();
+    private readonly TextBox url = new(), token = new(), template = new();
+    private readonly ComboBox printer = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly NumericUpDown seconds = new();
     private readonly string iniPath = Path.Combine(AppContext.BaseDirectory, "config.ini");
 
@@ -48,14 +50,9 @@ internal sealed class SettingsForm : Form
         showToken.CheckedChanged += (_, _) => token.UseSystemPasswordChar = !showToken.Checked;
         grid.Controls.Add(showToken, 2, 1);
         AddLabel(grid, "Tên máy in (để trống = mặc định)", 2); grid.Controls.Add(printer, 1, 2);
-        var printerList = new Button { Text = "Máy in..." , Dock = DockStyle.Fill };
-        printerList.Click += (_, _) => {
-            using var dialog = new PrintDialog { UseEXDialog = true };
-            if (dialog.ShowDialog(this) == DialogResult.OK)
-                printer.Text = dialog.PrinterSettings.PrinterName;
-            MessageBox.Show(this, "Excel có thể yêu cầu tên máy in kèm cổng. Nếu in lỗi, hãy để trống để dùng máy in mặc định Windows.", "Lưu ý");
-        };
-        grid.Controls.Add(printerList, 2, 2);
+        var refreshPrinters = new Button { Text = "Làm mới", Dock = DockStyle.Fill };
+        refreshPrinters.Click += (_, _) => RefreshPrinters(printer.Text);
+        grid.Controls.Add(refreshPrinters, 2, 2);
         AddLabel(grid, "File mẫu XLSX", 3); grid.Controls.Add(template, 1, 3);
         var browse = new Button { Text = "Chọn file...", Dock = DockStyle.Fill };
         browse.Click += (_, _) => {
@@ -75,10 +72,31 @@ internal sealed class SettingsForm : Form
         grid.Controls.Add(controls, 0, 6); grid.SetColumnSpan(controls, 3);
         Controls.Add(grid);
         AcceptButton = save;
+        RefreshPrinters("");
         LoadConfig();
     }
     private static void AddLabel(TableLayoutPanel grid, string name, int row) =>
         grid.Controls.Add(new Label { Text = name, AutoSize = true, Anchor = AnchorStyles.Left }, 0, row);
+
+    private void RefreshPrinters(string preferred)
+    {
+        try
+        {
+            printer.Items.Clear();
+            printer.Items.Add("(Máy in mặc định Windows)");
+            foreach (string installed in PrinterSettings.InstalledPrinters)
+                printer.Items.Add(installed);
+            if (!string.IsNullOrWhiteSpace(preferred) && !printer.Items.Contains(preferred))
+                printer.Items.Add(preferred + " (không tìm thấy)");
+            if (!string.IsNullOrWhiteSpace(preferred))
+                printer.SelectedItem = printer.Items.Contains(preferred) ? preferred : preferred + " (không tìm thấy)";
+            else printer.SelectedIndex = 0;
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "Không đọc được danh sách máy in: " + ex.Message, "Lỗi máy in");
+        }
+    }
 
     private void LoadConfig()
     {
@@ -92,7 +110,7 @@ internal sealed class SettingsForm : Form
             {
                 case "apibaseurl": url.Text = value; break;
                 case "agenttoken": token.Text = value; break;
-                case "printername": printer.Text = value; break;
+                case "printername": RefreshPrinters(value); break;
                 case "templatepath": template.Text = value; break;
                 case "pollseconds": if (int.TryParse(value, out int n)) seconds.Value = Math.Clamp(n, 2, 300); break;
             }
@@ -112,6 +130,9 @@ internal sealed class SettingsForm : Form
                 throw new InvalidOperationException("Hãy chọn file mẫu .xlsx.");
             if (new[] { api, token.Text, printer.Text, path }.Any(x => x.Contains('\r') || x.Contains('\n')))
                 throw new InvalidOperationException("Giá trị cấu hình không được chứa ký tự xuống dòng.");
+            var selectedPrinter = printer.SelectedIndex <= 0 ? "" : printer.Text;
+            if (selectedPrinter.EndsWith(" (không tìm thấy)", StringComparison.Ordinal))
+                throw new InvalidOperationException("Máy in này không còn được cài đặt. Hãy chọn máy in khác.");
             var text = "[PrintAgent]\r\n"
                 + "ApiBaseUrl=" + api + "\r\n"
                 + "AgentToken=" + token.Text.Trim() + "\r\n"
