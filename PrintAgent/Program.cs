@@ -56,7 +56,23 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        Console.OutputEncoding = System.Text.Encoding.UTF8;
+        System.Windows.Forms.Application.EnableVisualStyles();
+        System.Windows.Forms.Application.SetCompatibleTextRenderingDefault(false);
+        using var instance = new System.Threading.Mutex(true, @"Local\MachineControlPrintAgent", out bool first);
+        if (!first)
+        {
+            System.Windows.Forms.MessageBox.Show("Print Agent đang chạy trong khay hệ thống.", "Machine-Control");
+            return 0;
+        }
+        if (args.Contains("--test", StringComparer.OrdinalIgnoreCase))
+            return RunAgent(args, CancellationToken.None, _ => {});
+        System.Windows.Forms.Application.Run(new TrayAgentContext());
+        return 0;
+    }
+
+    internal static int RunAgent(string[] args, CancellationToken cancel, Action<string> status)
+    {
+        status("Đang khởi động");
         Console.WriteLine("Machine-Control Print Agent 1.0 - Windows 10 / Excel 2013");
         Console.WriteLine("Chạy trong phiên Windows có người dùng đăng nhập, không chạy dưới SYSTEM.");
         try
@@ -80,42 +96,49 @@ internal static class Program
 
             using var client = new HttpClient { BaseAddress = new Uri(config.ApiBaseUrl.TrimEnd('/') + "/"), Timeout = TimeSpan.FromSeconds(30) };
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", config.AgentToken);
-            Console.WriteLine("Đã bật chế độ nhận lệnh. Bấm Ctrl+C để thoát.");
-            while (true)
+            status("Đang kết nối với Machine-Control");
+            while (!cancel.IsCancellationRequested)
             {
                 try
                 {
                     using var response = client.GetAsync("api/print-agent/jobs/next").GetAwaiter().GetResult();
                     if (response.StatusCode == HttpStatusCode.NoContent)
                     {
-                        Thread.Sleep(TimeSpan.FromSeconds(config.PollSeconds));
+                        status("Đã kết nối - chờ lệnh in");
+                        if (cancel.WaitHandle.WaitOne(TimeSpan.FromSeconds(config.PollSeconds))) break;
                         continue;
                     }
                     response.EnsureSuccessStatusCode();
                     var json = response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
                     var job = ReadJob(json);
+                    status("Đang in: " + job.JobId);
                     Console.WriteLine($"Nhận yêu cầu in: {job.JobId}");
                     try
                     {
                         PrintExcel(config, job);
                         Report(client, job.JobId, "submitted", null);
+                        status("Đã gửi in: " + job.JobId);
                         Console.WriteLine($"Đã gửi đến hàng đợi in Windows: {job.JobId}");
                     }
                     catch (Exception error)
                     {
+                        status("Lỗi in: " + error.Message);
                         Console.Error.WriteLine("Lỗi in: " + error.Message);
                         Report(client, job.JobId, "failed", error.Message);
                     }
                 }
                 catch (Exception error)
                 {
+                    status("Mất kết nối: " + error.Message);
                     Console.Error.WriteLine("Không lấy được lệnh in: " + error.Message);
                 }
-                Thread.Sleep(TimeSpan.FromSeconds(config.PollSeconds));
+                if (cancel.WaitHandle.WaitOne(TimeSpan.FromSeconds(config.PollSeconds))) break;
             }
+            return 0;
         }
         catch (Exception error)
         {
+            status("Lỗi cấu hình: " + error.Message);
             Console.Error.WriteLine("Lỗi cấu hình: " + error.Message);
             return 1;
         }
