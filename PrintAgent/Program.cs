@@ -44,6 +44,7 @@ internal sealed class PrintJob
     public string JobId { get; set; } = "";
     public int Copies { get; set; } = 1;
     public List<PrintCard>? Cards { get; set; }
+    public int StartNumber { get; set; } = 1;
     public Dictionary<string, string?> Cells { get; set; } = new();
 }
 internal static class Program
@@ -125,7 +126,7 @@ internal static class Program
         var job = JsonSerializer.Deserialize<PrintJob>(json, JsonOptions)
             ?? throw new InvalidDataException("Dữ liệu lệnh in trống.");
         if (string.IsNullOrWhiteSpace(job.JobId) || job.JobId.Length > 128 || job.Copies < 1 || job.Copies > 10 ||
-            job.Cells is null || job.Cells.Count > 100 || (job.Cards?.Count ?? 0) > 8)
+            job.Cells is null || job.Cells.Count > 100 || job.StartNumber < 1 || job.StartNumber > 1000000 || (job.Cards?.Count ?? 0) > 800)
             throw new InvalidDataException("JobId, Copies hoặc Cells không hợp lệ.");
         return job;
     }
@@ -154,7 +155,7 @@ internal static class Program
             throw new FileNotFoundException("Không tìm thấy template XLSX: " + template);
         var excelType = Type.GetTypeFromProgID("Excel.Application")
             ?? throw new InvalidOperationException("Không tìm thấy Microsoft Excel (Office 2013) trên máy.");
-        object? excelObject = null, workbookObject = null;
+        object? excelObject = null;
         try
         {
             excelObject = Activator.CreateInstance(excelType)
@@ -162,64 +163,79 @@ internal static class Program
             dynamic excel = excelObject;
             excel.Visible = false;
             excel.DisplayAlerts = false;
-            excel.AutomationSecurity = 3; // ForceDisable: không chạy macro khi tự động mở file
-            workbookObject = excel.Workbooks.Open(template, ReadOnly: true, UpdateLinks: 0);
-            dynamic workbook = workbookObject;
-            // Mau 部材カード 原紙: 8 the, thu tu tren-trai sang phai, duoi-trai sang phai.
-            // Ghi vao o dau tien cua moi vung merged cell de Excel 2013 nhan du lieu.
-            if (job.Cards is { Count: > 0 })
+            excel.AutomationSecurity = 3;
+
+            string[] names = { "B8", "H8", "N8", "T8", "B32", "H32", "N32", "T32" };
+            string[] colors = { "B12", "H12", "N12", "T12", "B36", "H36", "N36", "T36" };
+            string[] quantities = { "B16", "H16", "N16", "T16", "B40", "H40", "N40", "T40" };
+            string[] numbers = { "E20", "K20", "Q20", "W20", "E44", "K44", "Q44", "W44" };
+
+            // Each batch uses a fresh read-only template; never changes the source XLSX.
+            int total = job.Cards?.Count ?? 0;
+            int pageCount = total == 0 ? 1 : (total + 7) / 8;
+            for (int page = 0; page < pageCount; page++)
             {
-                string[] names = { "B8", "H8", "N8", "T8", "B32", "H32", "N32", "T32" };
-                string[] colors = { "B12", "H12", "N12", "T12", "B36", "H36", "N36", "T36" };
-                string[] quantities = { "B16", "H16", "N16", "T16", "B40", "H40", "N40", "T40" };
-                // Neu job co it hon 8 the, xoa noi dung o the con lai tren ban in tam.
-                for (int i = 0; i < 8; i++)
-                {
-                    var card = i < job.Cards.Count ? job.Cards[i] : new PrintCard();
-                    if (card is null) throw new InvalidDataException("Thong tin the khong hop le.");
-                    job.Cells["原紙!" + names[i]] = card.Name ?? "";
-                    job.Cells["原紙!" + colors[i]] = card.Color ?? "";
-                    job.Cells["原紙!" + quantities[i]] = card.Quantity ?? "";
-                }
-            }
-            foreach (var (location, value) in job.Cells)
-            {
-                var separator = location.LastIndexOf('!');
-                var sheetName = separator < 0 ? "" : location[..separator].Trim(' ', '\'');
-                var address = separator < 0 ? location : location[(separator + 1)..];
-                if (!AddressPattern.IsMatch(address) || sheetName.Length > 31)
-                    throw new InvalidDataException("Vị trí ô không hợp lệ: " + location);
-                object? sheetObject = null, rangeObject = null;
+                object? workbookObject = null;
                 try
                 {
-                    sheetObject = string.IsNullOrEmpty(sheetName) ? workbook.Worksheets[1] : workbook.Worksheets[sheetName];
-                    dynamic sheet = sheetObject!;
-                    rangeObject = sheet.Range[address];
-                    dynamic cell = rangeObject!;
-                    if ((value?.Length ?? 0) > 1000) throw new InvalidDataException("Nội dung ô quá dài: " + location);
-                    cell.Value2 = value ?? "";
+                    workbookObject = excel.Workbooks.Open(template, ReadOnly: true, UpdateLinks: 0);
+                    dynamic workbook = workbookObject;
+                    var pageCells = new Dictionary<string, string?>(job.Cells, StringComparer.OrdinalIgnoreCase);
+                    if (job.Cards is { Count: > 0 })
+                    {
+                        for (int i = 0; i < 8; i++)
+                        {
+                            int cardIndex = page * 8 + i;
+                            var card = cardIndex < total ? job.Cards[cardIndex] : null;
+                            pageCells["原紙!" + names[i]] = card?.Name ?? "";
+                            pageCells["原紙!" + colors[i]] = card?.Color ?? "";
+                            pageCells["原紙!" + quantities[i]] = card?.Quantity ?? "";
+                            pageCells["原紙!" + numbers[i]] =
+                                card is null ? "" : checked(job.StartNumber + cardIndex).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                        }
+                    }
+                    foreach (var (location, value) in pageCells)
+                    {
+                        var separator = location.LastIndexOf('!');
+                        var sheetName = separator < 0 ? "" : location[..separator].Trim(' ', '\'');
+                        var address = separator < 0 ? location : location[(separator + 1)..];
+                        if (!AddressPattern.IsMatch(address) || sheetName.Length > 31)
+                            throw new InvalidDataException("Vị trí ô không hợp lệ: " + location);
+                        object? sheetObject = null, rangeObject = null;
+                        try
+                        {
+                            sheetObject = string.IsNullOrEmpty(sheetName) ? workbook.Worksheets[1] : workbook.Worksheets[sheetName];
+                            dynamic sheet = sheetObject!;
+                            rangeObject = sheet.Range[address];
+                            dynamic cell = rangeObject!;
+                            if ((value?.Length ?? 0) > 1000) throw new InvalidDataException("Nội dung ô quá dài: " + location);
+                            cell.Value2 = value ?? "";
+                        }
+                        finally
+                        {
+                            Release(rangeObject);
+                            Release(sheetObject);
+                        }
+                    }
+                    if (string.IsNullOrWhiteSpace(config.PrinterName))
+                        workbook.PrintOut(Copies: job.Copies);
+                    else
+                        workbook.PrintOut(Copies: job.Copies, ActivePrinter: config.PrinterName);
+                    Console.WriteLine($"Đã gửi trang {page + 1}/{pageCount} tới Windows Print Spooler.");
                 }
                 finally
                 {
-                    Release(rangeObject);
-                    Release(sheetObject);
+                    if (workbookObject != null)
+                    {
+                        try { ((dynamic)workbookObject).Close(SaveChanges: false); }
+                        catch (Exception ex) { Console.Error.WriteLine("Không đóng được workbook: " + ex.Message); }
+                        Release(workbookObject);
+                    }
                 }
             }
-            // Nếu PrinterName để trống: dùng máy in mặc định của Windows.
-            // Excel.ActivePrinter có thể yêu cầu tên kèm cổng NeXX:, nên ưu tiên máy in mặc định.
-            if (string.IsNullOrWhiteSpace(config.PrinterName))
-                workbook.PrintOut(Copies: job.Copies);
-            else
-                workbook.PrintOut(Copies: job.Copies, ActivePrinter: config.PrinterName);
         }
         finally
         {
-            if (workbookObject != null)
-            {
-                try { ((dynamic)workbookObject).Close(SaveChanges: false); }
-                catch (Exception ex) { Console.Error.WriteLine("Không đóng được workbook: " + ex.Message); }
-                Release(workbookObject);
-            }
             if (excelObject != null)
             {
                 try { ((dynamic)excelObject).Quit(); }
