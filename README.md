@@ -46,3 +46,25 @@ Tệp INI nằm cạnh EXE; bảo vệ quyền truy cập thư mục vì AgentTo
 - Header `Authorization: Bearer <AgentToken>` phải được xác thực tại Cloudflare. Backend cần bảo đảm chỉ một Agent claim một job để tránh in trùng.
 
 **Trạng thái:** đã bổ sung mã nguồn cho hai EXE và workflow. Chưa khẳng định workflow build thành công hay đã thử trên Windows thật. Chưa tích hợp API phía Machine-Control, chưa có template XLSX thực tế để xác minh nội dung ô. Excel PrintOut xác nhận gửi vào spooler, không chứng minh giấy đã ra khỏi máy in.
+
+
+## Template 部材カード 原紙 — ánh xạ 8 thẻ
+
+Đã kiểm tra file mẫu `部材カード　原紙.xlsx` người dùng cung cấp: sheet tên **原紙**, các ô ghi là **ô đầu vùng gộp**. Mỗi lệnh có tối đa tám thẻ, theo thứ tự trái sang phải, hàng trên rồi hàng dưới:
+
+| Thẻ | Tên | Màu | Số lượng |
+| --- | --- | --- | --- |
+| 1 | B8 | B12 | B16 |
+| 2 | H8 | H12 | H16 |
+| 3 | N8 | N12 | N16 |
+| 4 | T8 | T12 | T16 |
+| 5 | B32 | B36 | B40 |
+| 6 | H32 | H36 | H40 |
+| 7 | N32 | N36 | N40 |
+| 8 | T32 | T36 | T40 |
+
+Ghi chú: vị trí `T816` được hiểu thành `T16`. Khi job có `cards`, Agent tự ghi tên/màu/số lượng theo bảng và xoá ba trường của các thẻ còn trống trong bản in tạm. Job vẫn hỗ trợ `cells` kiểu cũ; nếu cùng một ô xuất hiện ở cả hai phần, giá trị `cells` ghi đè mapping tự động.
+
+Lệnh mẫu: `{"jobId":"123","copies":1,"cards":[{"name":"部材 A","color":"白","quantity":"100"}],"cells":{}}`.
+
+**Lưu ý:** Template XLSX đính kèm trong chat chưa được tự động đưa lên GitHub (repo chỉ chứa mã nguồn). Hãy sao chép file mẫu lên máy Windows và chọn đường dẫn bằng Print-Settings.exe. Cần kiểm tra in giấy thật để chắc chắn căn lề, kích thước trang và máy in phù hợp.
