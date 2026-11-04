@@ -136,7 +136,7 @@ internal sealed class SettingsForm : Form
             var text = "[PrintAgent]\r\n"
                 + "ApiBaseUrl=" + api + "\r\n"
                 + "AgentToken=" + token.Text.Trim() + "\r\n"
-                + "PrinterName=" + printer.Text.Trim() + "\r\n"
+                + "PrinterName=" + selectedPrinter + "\r\n"
                 + "TemplatePath=" + path + "\r\n"
                 + "PollSeconds=" + seconds.Value + "\r\n";
             var temp = iniPath + ".tmp";
