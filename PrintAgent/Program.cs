@@ -97,8 +97,15 @@ internal static class Program
             using var client = new HttpClient { BaseAddress = new Uri(config.ApiBaseUrl.TrimEnd('/') + "/"), Timeout = TimeSpan.FromSeconds(30) };
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", config.AgentToken);
             status("Đang kết nối với Machine-Control");
+            var lastHeartbeat = DateTime.MinValue;
             while (!cancel.IsCancellationRequested)
             {
+                if (DateTime.UtcNow - lastHeartbeat >= TimeSpan.FromSeconds(60))
+                {
+                    lastHeartbeat = DateTime.UtcNow;
+                    try { PrinterHeartbeat.Send(client, config); }
+                    catch (Exception ex) { Console.Error.WriteLine("Không gửi được trạng thái máy in: " + ex.Message); }
+                }
                 try
                 {
                     using var response = client.GetAsync("api/print-agent/jobs/next").GetAwaiter().GetResult();
