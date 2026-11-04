@@ -1,0 +1,7 @@
+{
+  "ApiBaseUrl": "",
+  "AgentToken": "",
+  "PrinterName": "",
+  "TemplatePath": "template.xlsx",
+  "PollSeconds": 3
+}
