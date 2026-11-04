@@ -76,3 +76,17 @@ Print Agent tự đánh số lần lượt cho từng thẻ: `E20`, `K20`, `Q20`
 Trong JSON, dùng `cards` là danh sách toàn bộ thẻ (tối đa 800), `startNumber` mặc định bằng 1, có thể đặt ví dụ 101 để bắt đầu từ số 101. `copies` là số bản sao của mỗi trang; số thứ tự **không tăng** giữa các bản sao cùng một trang. Nếu không cung cấp `cards`, Agent giữ chế độ cũ `cells` và không tự đánh số.
 
 Lưu ý: Với các lệnh nhiều trang, nếu gặp lỗi giữa chừng, một số trang có thể đã được gửi tới spooler. Cần đối chiếu trước khi in lại để tránh in trùng.
+
+## Chạy Print Agent ở khay hệ thống (System Tray)
+
+Từ phiên bản này, `Print-Agent.exe` là ứng dụng WinForms **WinExe**, không mở cửa sổ CMD khi chạy bình thường. Biểu tượng nằm trong khay hệ thống cạnh đồng hồ Windows (có thể nằm trong phần biểu tượng ẩn, bấm mũi tên ^). Chỉ một Agent được phép chạy trong mỗi phiên người dùng Windows.
+
+Nhấn chuột phải vào biểu tượng để sử dụng:
+- **Xem trạng thái**: hiển thị trạng thái kết nối/lệnh in gần nhất.
+- **Mở cài đặt**: khởi chạy `Print-Settings.exe` trong cùng thư mục.
+- **Xem nhật ký**: mở `print-agent.log` bằng Notepad.
+- **Thoát Print Agent**: dừng nhận lệnh, để việc in đang xử lý hoàn tất trước khi kết thúc.
+
+Cần đăng nhập Windows để điều khiển Excel 2013 trong phiên làm việc. Chức năng chạy cùng Windows **chưa tự bật** trong ứng dụng: người dùng có thể tạo shortcut của `Print-Agent.exe` trong thư mục `shell:startup` để chạy khi đăng nhập. Việc sử dụng System Tray không làm mất yêu cầu xác thực Agent Token của Cloudflare.
+
+Chế độ `Print-Agent.exe --test` vẫn dùng `sample-job.json` và in trực tiếp, nhưng ứng dụng WinExe không xuất hiện console; để xem lỗi, chạy từ source bằng `dotnet run` hoặc kiểm tra bản in/hàng đợi Windows. Cần thử nghiệm thực tế với Windows 10 và Excel 2013.
