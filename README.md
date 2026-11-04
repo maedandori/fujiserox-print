@@ -1,64 +1,48 @@
-# Machine-Control Print Agent — Fuji Xerox C3371
+# Machine-Control: hai ứng dụng in Windows 10
 
-Ứng dụng C# dành cho **Windows 10 64-bit + Microsoft Excel 2013 + Fuji Xerox DocuCentre-VI C3371 qua LAN**.
+Máy in: Fuji Xerox DocuCentre-VI C3371 (LAN). Excel: Office 2013. Không cần cài Node.js, .NET SDK hoặc .NET Runtime tại máy sử dụng; GitHub Actions đóng gói self-contained win-x64.
 
-## Trạng thái
+## Hai chương trình
 
-- Đã thêm source C# và workflow GitHub Actions để build **EXE self-contained**.
-- Có chế độ in thử bằng file XLSX cục bộ. **Chưa có template XLSX thực tế**, vì vậy chưa thể xác minh bố cục và in thử trên C3371.
-- Chế độ nhận lệnh qua Cloudflare mới là **client theo hợp đồng API bên dưới**, chưa triển khai các API phía Machine-Control. Không được coi là đã tích hợp hoặc deploy.
-- Chưa kiểm tra build thành công và chưa xác minh trên Windows thật.
+- **Print-Settings.exe**: giao diện Windows để nhập URL Machine-Control, Agent Token, tên máy in, đường dẫn template .xlsx và chu kỳ lấy lệnh. Bấm **Lưu cấu hình** tạo/sửa **config.ini** cạnh hai file .exe.
+- **Print-Agent.exe**: đọc **config.ini khi khởi động**, kết nối HTTPS đến Machine-Control để lấy lệnh, điền dữ liệu vào Excel và gửi in. Không ghi đè template. Phải khởi động lại Agent khi đổi cấu hình.
 
-## Xây dựng trên GitHub Actions
+Hai EXE và config.ini phải đặt **cùng một thư mục**. Agent chạy trong phiên Windows đã đăng nhập, vì Microsoft Excel COM automation không phù hợp với Windows Service chạy ngầm dưới SYSTEM.
 
-Trong repo này, vào **Actions → Build Machine-Control Print Agent → Run workflow**. Sau khi job thành công, mở lần chạy và tải artifact **Machine-Control-Print-Agent-Win10-x64**.
+## Build từ iPhone bằng GitHub Actions
 
-GitHub Actions tự build trên Windows runner bằng .NET SDK. Máy tính dùng để in **không cần cài Node.js hoặc .NET SDK/runtime riêng**.
+Vào **Actions > Build Machine-Control Print Apps > Run workflow**, chọn bản chạy thành công rồi tải artifact **Machine-Control-Two-Print-Apps-Win10-x64**. Artifact có hai EXE và sample-job.json.
 
-## Cài và in thử tại Windows 10
+Nếu workflow mới push vào main, GitHub Actions cũng tự khởi chạy.
 
-1. Cài đúng driver Fuji Xerox/FUJIFILM C3371; in thử từ Windows. Đặt **C3371 làm máy in mặc định**.
-2. Giải nén artifact vào thư mục riêng, ví dụ `C:\Machine-Control-Print-Agent`.
-3. Sao chép `config.example.json` thành `config.json`.
-4. Chép file mẫu Excel thật thành `template.xlsx` trong cùng thư mục (hoặc sửa `TemplatePath` trỏ tới đường dẫn tuyệt đối).
-5. Sửa `sample-job.json`: khóa dạng `Sheet1!B3` phải khớp **tên sheet** và **địa chỉ ô có thật** trong template. Không được ghi vào ô gộp không phải ô đầu vùng.
-6. Chạy **trong phiên Windows đã đăng nhập** (có thể mở PowerShell từ thư mục Agent):
+## Sử dụng
 
-   `./Machine-Control-Print-Agent.exe --test`
+1. Cài và kiểm tra driver Fuji Xerox C3371, in thử từ Windows. Khuyên đặt C3371 làm máy in mặc định.
+2. Giải nén hai EXE vào ví dụ `C:\Machine-Control-Print`.
+3. Chép `template.xlsx` vào thư mục đó hoặc chọn file XLSX từ đường dẫn khác.
+4. Chạy `Print-Settings.exe`, chọn template và các cài đặt, nhấn **Lưu cấu hình**. Để trống tên máy in nếu muốn dùng máy in mặc định; Excel có thể cần tên máy in kèm cổng khi chỉ định trực tiếp.
+5. Để in thử **không cần Cloudflare**, mở terminal trong thư mục và chạy `./Print-Agent.exe --test`. Điều chỉnh `sample-job.json` theo các ô thực trong template.
+6. Khi backend Cloudflare đã có API và token hợp lệ, nhập API URL + Agent Token trong Settings, rồi chạy `Print-Agent.exe` để nhận lệnh liên tục. Nhấn Ctrl+C để dừng.
 
-7. Agent mở một **bản Excel chỉ đọc**, điền dữ liệu trong bộ nhớ và gọi `Workbook.PrintOut`. **Không sửa file template gốc**. Kết quả 'đã gửi tới Windows Spooler' chưa có nghĩa giấy đã in xong.
+## config.ini
 
-Mặc định `PrinterName` để trống để Excel sử dụng máy in mặc định Windows; nếu chỉ định tên máy in, Excel có thể yêu cầu tên bao gồm cổng, ví dụ `... on Ne01:`.
+Ví dụ sau là cấu hình minh hoạ (không commit file config.ini chứa token):
 
-Máy tính cần có **Excel 2013 cài sẵn**. Đây là ứng dụng điều khiển Excel trong phiên desktop; **không chạy bằng tài khoản SYSTEM hoặc dưới dạng dịch vụ Windows không tương tác**. Excel có thể hiển thị hộp thoại hoặc bị treo khi file mẫu gặp lỗi, cần thử nghiệm thực tế trước khi tự động hóa.
+```ini
+[PrintAgent]
+ApiBaseUrl=https://machine-control.maedandoris.workers.dev
+AgentToken=
+PrinterName=
+TemplatePath=template.xlsx
+PollSeconds=3
+```
 
-## API dự kiến cho Machine-Control (chưa triển khai)
+Tệp INI nằm cạnh EXE; bảo vệ quyền truy cập thư mục vì AgentToken lưu trong văn bản thuần. Nếu di chuyển EXE sang thư mục khác, hãy chuyển config.ini cùng nó.
 
-Agent chủ động lấy lệnh, dùng `Authorization: Bearer <AgentToken>`:
+## Hợp đồng API dự kiến (chưa xác minh đã triển khai)
 
-- `GET /api/print-agent/jobs/next`: trả HTTP 204 nếu không có việc; nếu có, trả JSON:
-  ```json
-  {
-    "jobId": "unique-job-id",
-    "copies": 1,
-    "cells": {"Sheet1!B3": "Tên khuôn", "Sheet1!E3": "15号機"}
-  }
-  ```
-- `POST /api/print-agent/jobs/{jobId}/status`: JSON `{"status":"submitted","error":null}` hoặc `{"status":"failed","error":"..."}`.
+- `GET /api/print-agent/jobs/next`: HTTP 204 khi không có job; hoặc JSON có `jobId`, `copies`, `cells` (địa chỉ `Sheet1!B3` -> nội dung).
+- `POST /api/print-agent/jobs/{jobId}/status`: `{"status":"submitted","error":null}` hoặc `{"status":"failed","error":"..."}`.
+- Header `Authorization: Bearer <AgentToken>` phải được xác thực tại Cloudflare. Backend cần bảo đảm chỉ một Agent claim một job để tránh in trùng.
 
-Cloudflare phải xác thực token, **claim mỗi lệnh cho đúng một Agent**, kiểm tra trạng thái, ngăn in lại lệnh cũ và thiết kế cơ chế xử lý khi mất kết nối. Không tự động gửi lại lệnh `submitted` khi chưa đối chiếu với hàng đợi Windows, vì có nguy cơ in trùng.
-
-**Chưa có khả năng chứng minh 'đã in xong' bằng phương thức Excel.PrintOut**; trước mắt chỉ báo trạng thái gửi thành công tới Windows.
-
-## Cấu hình
-
-`ApiBaseUrl`, `AgentToken` trong `config.json` để trống cho đến khi API thực sự triển khai. Không commit `config.json` có token.
-
-`TemplatePath` là đường dẫn file mẫu trong máy Windows, `PollSeconds` mặc định 3 giây. Chế độ `--test` không gửi yêu cầu đến Cloudflare.
-
-## Các việc tiếp theo
-
-1. Cung cấp `template.xlsx` để xác minh tên sheet, các ô thay thế, vùng in, khổ giấy và hướng giấy.
-2. Build workflow trên GitHub; kiểm tra lỗi nếu có.
-3. In thử trực tiếp trên Windows 10.
-4. Sau đó mới thêm API D1 và nút In trong repo `machine-control`, cấp token riêng cho Agent và thử end-to-end.
+**Trạng thái:** đã bổ sung mã nguồn cho hai EXE và workflow. Chưa khẳng định workflow build thành công hay đã thử trên Windows thật. Chưa tích hợp API phía Machine-Control, chưa có template XLSX thực tế để xác minh nội dung ô. Excel PrintOut xác nhận gửi vào spooler, không chứng minh giấy đã ra khỏi máy in.
