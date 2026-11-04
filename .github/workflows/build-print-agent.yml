@@ -1,17 +1,18 @@
-name: Build Machine-Control Print Agent
+name: Build Machine-Control Print Apps
 on:
   workflow_dispatch:
   push:
     branches: [main]
     paths:
       - 'PrintAgent/**'
+      - 'PrintSettings/**'
       - '.github/workflows/build-print-agent.yml'
       - 'README.md'
 permissions:
   contents: read
 jobs:
   build:
-    name: Build EXE cho Windows 10
+    name: Tạo hai EXE Windows 10
     runs-on: windows-2022
     steps:
       - name: Lấy mã nguồn
@@ -20,21 +21,26 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
-      - name: Kiểm tra và đóng gói EXE độc lập
+      - name: Build ứng dụng nhận lệnh in
         shell: pwsh
         run: |
-          dotnet restore PrintAgent/PrintAgent.csproj
           dotnet publish PrintAgent/PrintAgent.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o publish
-          if (-not (Test-Path publish/Machine-Control-Print-Agent.exe)) { throw "Không tìm thấy EXE sau build" }
-      - name: Đóng gói hướng dẫn và cấu hình mẫu
+          Copy-Item publish/Machine-Control-Print-Agent.exe publish/Print-Agent.exe
+          Remove-Item publish/Machine-Control-Print-Agent.exe
+      - name: Build ứng dụng cài đặt
         shell: pwsh
         run: |
-          Copy-Item PrintAgent/config.example.json publish/config.example.json
+          dotnet publish PrintSettings/PrintSettings.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o publish
+          if (-not (Test-Path publish/Print-Agent.exe)) { throw "Thiếu Print-Agent.exe" }
+          if (-not (Test-Path publish/Print-Settings.exe)) { throw "Thiếu Print-Settings.exe" }
+      - name: Đóng gói hướng dẫn và lệnh thử
+        shell: pwsh
+        run: |
           Copy-Item PrintAgent/sample-job.json publish/sample-job.json
           Copy-Item README.md publish/README.md
-      - name: Tải artifact ứng dụng
+      - name: Xuất hai ứng dụng Windows
         uses: actions/upload-artifact@v4
         with:
-          name: Machine-Control-Print-Agent-Win10-x64
+          name: Machine-Control-Two-Print-Apps-Win10-x64
           path: publish/
           retention-days: 30
