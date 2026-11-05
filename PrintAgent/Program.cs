@@ -77,7 +77,7 @@ internal static class Program
     internal static int RunAgent(string[] args, CancellationToken cancel, Action<string> status)
     {
         status("Đang khởi động");
-        Console.WriteLine("Machine-Control Print Agent 1.0 - Windows 10 / Excel 2013");
+        Console.WriteLine("Machine-Control Print Agent v"+AutoUpdate.Version+" - Windows 10 / Excel 2013");
         Console.WriteLine("Chạy trong phiên Windows có người dùng đăng nhập, không chạy dưới SYSTEM.");
         try
         {
@@ -105,6 +105,7 @@ internal static class Program
             status("Agent: " + Environment.MachineName + " (" + agentId[..8] + ")");
             status("Đang kết nối với Machine-Control");
             var lastHeartbeat = DateTime.MinValue;
+            var nextUpdateCheck = DateTime.UtcNow;
             while (!cancel.IsCancellationRequested)
             {
                 if (DateTime.UtcNow - lastHeartbeat >= TimeSpan.FromSeconds(60))
@@ -118,7 +119,13 @@ internal static class Program
                     using var response = client.GetAsync("api/print-agent/jobs/next").GetAwaiter().GetResult();
                     if (response.StatusCode == HttpStatusCode.NoContent)
                     {
-                        status("Đã kết nối - chờ lệnh in");
+                        // Check only while the queue is empty: never interrupt Excel/printing.
+                        if (DateTime.UtcNow >= nextUpdateCheck || AutoUpdate.ConsumeRequest())
+                        {
+                            nextUpdateCheck = DateTime.UtcNow.AddHours(6);
+                            if(AutoUpdate.TryStage(client,status,cancel))return 0;
+                        }
+                        status("Đã kết nối - chờ lệnh in (v"+AutoUpdate.Version+")");
                         if (cancel.WaitHandle.WaitOne(TimeSpan.FromSeconds(config.PollSeconds))) break;
                         continue;
                     }
