@@ -23,7 +23,7 @@ internal static class PrinterHeartbeat
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool ClosePrinter(IntPtr handle);
 
-    public static void Send(HttpClient client, AgentConfig config)
+    public static void Send(HttpClient client, AgentConfig config, string agentId)
     {
         var name=config.PrinterName;
         if (string.IsNullOrWhiteSpace(name))
@@ -55,7 +55,7 @@ internal static class PrinterHeartbeat
         }
         // Driver reporting no error is NOT proof that paper is present.
         using var response=client.PostAsJsonAsync("api/print-agent/status/heartbeat",
-            new {printerName=name,printerValid=valid,paperStatus=paper,windowsStatus=status})
+            new {agentId,machineName=Environment.MachineName,printerName=name,printerValid=valid,paperStatus=paper,windowsStatus=status})
             .GetAwaiter().GetResult();
         response.EnsureSuccessStatusCode();
     }
