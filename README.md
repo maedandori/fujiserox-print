@@ -90,3 +90,14 @@ Nhấn chuột phải vào biểu tượng để sử dụng:
 Cần đăng nhập Windows để điều khiển Excel 2013 trong phiên làm việc. Chức năng chạy cùng Windows **chưa tự bật** trong ứng dụng: người dùng có thể tạo shortcut của `Print-Agent.exe` trong thư mục `shell:startup` để chạy khi đăng nhập. Việc sử dụng System Tray không làm mất yêu cầu xác thực Agent Token của Cloudflare.
 
 Chế độ `Print-Agent.exe --test` vẫn dùng `sample-job.json` và in trực tiếp, nhưng ứng dụng WinExe không xuất hiện console; để xem lỗi, chạy từ source bằng `dotnet run` hoặc kiểm tra bản in/hàng đợi Windows. Cần thử nghiệm thực tế với Windows 10 và Excel 2013.
+
+
+## Nhiều máy Windows / định danh Agent
+
+Bản Print-Agent.exe mới tạo `agent-id.txt` chứa mã UUID riêng trong thư mục chương trình, kèm tên Windows (`Environment.MachineName`) và tên máy in khi gửi heartbeat. Agent tự báo trạng thái mỗi khoảng 60 giây và gửi header `X-Print-Agent-Id` trong các request lấy/xác nhận lệnh in.
+
+**Mỗi máy phải có một agent-id.txt riêng.** Khi sao chép hai EXE và `config.ini` sang Windows khác, KHÔNG sao chép `agent-id.txt` từ máy trước. Khởi chạy Agent trên máy mới để tự tạo ID khác. Không xóa `agent-id.txt` của máy đang sử dụng vì các lệnh chờ đã được gán theo ID.
+
+Machine-Control sẽ không cấp lệnh in cho Agent đời cũ không gửi Agent ID. Cần tải Print-Agent.exe từ artifact build mới và thay trên *tất cả* máy Windows muốn sử dụng.
+
+Trong trang 部材印, chọn tên máy Windows và tên máy in trước khi gửi thử. API báo `submitted` nghĩa là đã gửi tới Windows spooler, không chứng minh giấy đã được in thành công. Nếu Agent đã nhận lệnh nhưng mất kết nối, lệnh sẽ để trạng thái `claimed` để tránh tự động in trùng.
