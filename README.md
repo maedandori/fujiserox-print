@@ -143,3 +143,12 @@ Hai EXE được GitHub Actions build chung với phiên bản \`1.0.<workflow_r
 - Để hai EXE và \`config.ini\` ở thư mục Windows cho phép người dùng hiện tại ghi (ví dụ \`C:\Machine-Control-Print\`), tránh \`C:\Program Files\` nếu không có quyền ghi. Đóng Print-Settings trước khi cập nhật.
 - Không hỗ trợ nâng cấp trong khi máy đang tắt, người dùng chưa đăng nhập hoặc mạng ngắt; Agent sẽ tự kiểm tra lại khi được mở.
 - Bản đầu tiên vẫn cần xác minh thực tế trên Win10 và Excel 2013. Không tự nhận đã in giấy thành công khi chỉ gửi đến Windows Spooler.
+
+
+## Chuyển đổi ngôn ngữ 🇻🇳 / 🇯🇵
+
+- **Print-Settings.exe:** sử dụng nút `🇻🇳 Tiếng Việt → 🇯🇵 日本語` (hoặc chiều ngược lại) ở hàng nút dưới cùng. Nhãn trường, nút thao tác, chế độ in PDF, tự cập nhật và một số thông báo đổi ngôn ngữ ngay lập tức.
+- **Print-Agent.exe:** nhấn chuột phải biểu tượng máy in tại System Tray, chọn **Ngôn ngữ / 言語**, rồi chọn **🇻🇳 Tiếng Việt** hoặc **🇯🇵 日本語**. Dấu chọn hiển thị ngôn ngữ đang dùng; các mục menu chuyển ngay.
+- Hai EXE dùng chung tệp `ui-language.txt` cạnh `config.ini`. Tệp ghi `vi` hoặc `ja`, không chứa token hay thông tin máy. Giá trị mặc định cho bản nâng cấp là tiếng Việt.
+- Không tác động `config.ini`, `agent-id.txt`, máy in đã chọn, PDF hoặc lịch kiểm tra cập nhật. Nếu đổi ngôn ngữ bằng Settings khi Agent đang chạy, Agent sẽ đọc lại sau khi khởi động lại.
+- Khi tự cập nhật, gói ZIP chỉ thay hai EXE; tệp ngôn ngữ vẫn được giữ nguyên. Cần quyền ghi tại thư mục chứa ứng dụng để lưu lựa chọn.
