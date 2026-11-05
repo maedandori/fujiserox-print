@@ -7,7 +7,9 @@ on:
       - 'PrintAgent/**'
       - 'PrintSettings/**'
       - '.github/workflows/build-print-agent.yml'
-      - 'README.md'
+concurrency:
+  group: machine-control-print-release
+  cancel-in-progress: true
 permissions:
   contents: write
 jobs:
