@@ -122,3 +122,24 @@ Trong Print-Settings có trường **Tên hiển thị trên web** (ví dụ `M�
 Agent gửi `printerDisplayName` cùng `agentId`, `machineName`, `printerName` qua heartbeat. Trên trang 部材印, tên tùy chỉnh được hiển thị nổi bật; tên Windows/driver vẫn nằm ở dòng thông tin phụ để đối chiếu. Không thay đổi tên PC, driver hoặc Agent ID. Nếu chưa đặt tên, website dùng tên driver/máy Windows cũ.
 
 Sau khi đổi tên, bấm **Lưu cấu hình**, thoát và mở lại Print Agent để nhận cấu hình mới. Agent gửi heartbeat mỗi 60 giây; nhấn **接続確認** trên web sau khi Agent đã cập nhật trạng thái. Không sao chép `agent-id.txt` giữa các PC.
+
+
+## Version và tự cập nhật qua GitHub Releases riêng tư
+
+Hai EXE được GitHub Actions build chung với phiên bản \`1.0.<workflow_run_number>\`. Build thành công sẽ phát hành GitHub Release riêng tư với tag \`print-v1.0.N\`, gói \`Machine-Control-Print-Update.zip\` (chỉ gồm **Print-Agent.exe** và **Print-Settings.exe**) và \`update-manifest.json\` (phiên bản, kích thước, SHA-256). Vẫn có ZIP artifact thông thường để tải ban đầu.
+
+**Lý do cần Cloudflare:** GitHub repository \`maedandori/fujiserox-print\` là private. Máy Windows chỉ dùng \`PRINT_AGENT_TOKEN\` hiện có để gọi hai API đã được thêm trên Worker Machine-Control:
+- \`GET /api/print-agent/update/latest\`: trả số phiên bản mới nhất, kích thước gói và SHA-256.
+- \`GET /api/print-agent/update/package?version=1.0.N\`: Worker chuyển tiếp bản ZIP từ GitHub Release, không đưa GitHub Token xuống Windows.
+
+**Cấu hình duy nhất cần bổ sung trên Cloudflare:** Tạo fine-grained Personal Access Token tại GitHub, chỉ cho phép truy cập repository \`maedandori/fujiserox-print\`, quyền **Contents: Read-only**, rồi lưu token làm Cloudflare Worker Secret \`GITHUB_PRINT_RELEASE_TOKEN\` trên account chứa Worker \`machine-control\`. Không nhập token GitHub vào Print-Settings, không commit token vào repo. Không thay \`PRINT_AGENT_TOKEN\` hiện có.
+
+**Tự cập nhật:** Agent kiểm tra lúc hàng đợi trống và mỗi 6 giờ sau đó. Khi có phiên bản cao hơn, nó tải ZIP qua HTTPS, so sánh dung lượng và SHA-256, kiểm tra chỉ có đúng hai EXE, rồi chạy tiến trình Windows PowerShell ẩn để chờ Agent thoát, thay hai EXE và khởi động lại Agent. Không tải/ghi khi Agent đang xử lý Excel. Nếu mạng lỗi, token proxy chưa cấu hình hoặc SHA không khớp, Agent vẫn chạy bản cũ và tiếp tục in. Tên máy, template và token lưu trong \`config.ini\`, mã định danh máy lưu \`agent-id.txt\`, **không bị thay đổi**.
+
+**Giao diện:** Click chuột phải biểu tượng máy in System Tray để xem phiên bản hoặc chọn **Kiểm tra cập nhật**. Print-Settings hiển thị phiên bản ở tiêu đề; trang 部材印 hiển thị phiên bản báo từ từng Agent.
+
+**Lưu ý bắt buộc:**
+- Phải cài **một lần thủ công** bản EXE có AutoUpdate này; bản cũ không tự có cơ chế nâng cấp.
+- Để hai EXE và \`config.ini\` ở thư mục Windows cho phép người dùng hiện tại ghi (ví dụ \`C:\Machine-Control-Print\`), tránh \`C:\Program Files\` nếu không có quyền ghi. Đóng Print-Settings trước khi cập nhật.
+- Không hỗ trợ nâng cấp trong khi máy đang tắt, người dùng chưa đăng nhập hoặc mạng ngắt; Agent sẽ tự kiểm tra lại khi được mở.
+- Bản đầu tiên vẫn cần xác minh thực tế trên Win10 và Excel 2013. Không tự nhận đã in giấy thành công khi chỉ gửi đến Windows Spooler.
