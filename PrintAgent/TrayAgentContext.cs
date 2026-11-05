@@ -9,6 +9,7 @@ internal sealed class TrayAgentContext : ApplicationContext
 {
     private readonly NotifyIcon tray;
     private readonly Icon printerIcon;
+    private readonly Control dispatcher = new();
     private readonly CancellationTokenSource stopping = new();
     private readonly Thread worker;
     private readonly object logLock = new();
@@ -17,7 +18,15 @@ internal sealed class TrayAgentContext : ApplicationContext
 
     public TrayAgentContext()
     {
+        dispatcher.CreateControl();
         var menu = new ContextMenuStrip();
+        var versionItem = menu.Items.Add("Phiên bản v"+AutoUpdate.Version);
+        versionItem.Enabled = false;
+        menu.Items.Add("Kiểm tra cập nhật", null, (_, _) =>
+        {
+            AutoUpdate.RequestCheck();
+            UpdateStatus("Đã yêu cầu kiểm tra phiên bản khi hàng đợi rảnh.");
+        });
         menu.Items.Add("Xem trạng thái", null, (_, _) =>
             MessageBox.Show(lastStatus, "Machine-Control Print Agent",
                 MessageBoxButtons.OK, MessageBoxIcon.Information));
@@ -55,6 +64,12 @@ internal sealed class TrayAgentContext : ApplicationContext
 
     private void UpdateStatus(string message)
     {
+        if(message=="AUTOMATIC_UPDATE_RESTART")
+        {
+            try {dispatcher.BeginInvoke(new Action(StopAgent));}
+            catch { /* Process exits without replacing a job currently printing. */ }
+            return;
+        }
         lastStatus = message;
         try
         {
@@ -102,6 +117,7 @@ internal sealed class TrayAgentContext : ApplicationContext
         tray.Visible = false;
         tray.Dispose();
         printerIcon.Dispose();
+        dispatcher.Dispose();
         // The non-background printing worker completes any Excel COM operation
         // before the process ends; do not kill Excel in the middle of a job.
         ExitThread();
