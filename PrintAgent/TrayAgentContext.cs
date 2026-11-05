@@ -15,6 +15,7 @@ internal sealed class TrayAgentContext : ApplicationContext
     private readonly object logLock = new();
     private string lastStatus = "Đang khởi động";
     private bool exiting;
+    private readonly ToolStripMenuItem languageMenu;
     private readonly ToolStripMenuItem vietnameseItem;
     private readonly ToolStripMenuItem japaneseItem;
     private readonly ToolStripMenuItem statusItem;
@@ -30,7 +31,7 @@ internal sealed class TrayAgentContext : ApplicationContext
         var menu = new ContextMenuStrip();
         versionItem=menu.Items.Add("");
         versionItem.Enabled=false;
-        var languageMenu=new ToolStripMenuItem();
+        languageMenu=new ToolStripMenuItem();
         vietnameseItem=new ToolStripMenuItem("🇻🇳 Tiếng Việt");
         japaneseItem=new ToolStripMenuItem("🇯🇵 日本語");
         vietnameseItem.Click+=(_,_)=>ChangeLanguage("vi");
@@ -93,8 +94,7 @@ internal sealed class TrayAgentContext : ApplicationContext
             return;
         }
         // The other EXE reads the same language file on its next launch.
-        var languageMenu=vietnameseItem.OwnerItem as ToolStripMenuItem;
-        if(languageMenu!=null)ApplyLanguage(languageMenu);
+        ApplyLanguage(languageMenu);
     }
     private void ApplyLanguage(ToolStripMenuItem languageMenu)
     {
