@@ -23,7 +23,7 @@ internal static class IniConfig
             throw new InvalidDataException("PollSeconds phải là số nguyên.");
         return new AgentConfig { ApiBaseUrl = Get("ApiBaseUrl"), AgentToken = Get("AgentToken"),
             PrinterName = Get("PrinterName"), TemplatePath = Get("TemplatePath", "template.xlsx"), PollSeconds = seconds,
-            PrintMode = Get("PrintMode", "printer"), PdfOutputPath = Get("PdfOutputPath") };
+            PrintMode = Get("PrintMode", "printer"), PdfOutputPath = Get("PdfOutputPath"), PrinterDisplayName = Get("PrinterDisplayName") };
     }
 }
 internal sealed class AgentConfig
@@ -31,6 +31,7 @@ internal sealed class AgentConfig
     public string ApiBaseUrl { get; set; } = "";
     public string AgentToken { get; set; } = "";
     public string PrinterName { get; set; } = "";
+    public string PrinterDisplayName { get; set; } = "";
     public string TemplatePath { get; set; } = "template.xlsx";
     public int PollSeconds { get; set; } = 3;
     public string PrintMode { get; set; } = "printer";
