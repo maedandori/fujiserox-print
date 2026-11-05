@@ -23,7 +23,7 @@ internal static class IniConfig
             throw new InvalidDataException("PollSeconds phải là số nguyên.");
         return new AgentConfig { ApiBaseUrl = Get("ApiBaseUrl"), AgentToken = Get("AgentToken"),
             PrinterName = Get("PrinterName"), TemplatePath = Get("TemplatePath", "template.xlsx"), PollSeconds = seconds,
-            PrintMode = Get("PrintMode", "printer"), PdfOutputPath = Get("PdfOutputPath"), PrinterDisplayName = Get("PrinterDisplayName") };
+            PrintMode = Get("PrintMode", "printer"), PdfOutputPath = Get("PdfOutputPath"), PrinterDisplayName = Get("PrinterDisplayName"), AutoUpdateEnabled = Get("AutoUpdateEnabled","1")!="0" };
     }
 }
 internal sealed class AgentConfig
@@ -36,6 +36,7 @@ internal sealed class AgentConfig
     public int PollSeconds { get; set; } = 3;
     public string PrintMode { get; set; } = "printer";
     public string PdfOutputPath { get; set; } = "";
+    public bool AutoUpdateEnabled { get; set; } = true;
 }
 internal sealed class PrintCard
 {
@@ -120,7 +121,7 @@ internal static class Program
                     if (response.StatusCode == HttpStatusCode.NoContent)
                     {
                         // Check only while the queue is empty: never interrupt Excel/printing.
-                        if (DateTime.UtcNow >= nextUpdateCheck || AutoUpdate.ConsumeRequest())
+                        if (AutoUpdate.ConsumeRequest() || (config.AutoUpdateEnabled && DateTime.UtcNow >= nextUpdateCheck))
                         {
                             nextUpdateCheck = DateTime.UtcNow.AddHours(6);
                             if(AutoUpdate.TryStage(client,status,cancel))return 0;
