@@ -30,7 +30,7 @@ internal sealed class SettingsForm : Form
 
     public SettingsForm()
     {
-        Text = "Machine-Control - Cài đặt máy in";
+        Text = "Machine-Control - Cài đặt máy in (v"+(typeof(Program).Assembly.GetName().Version?.ToString(3)??"1.0.0")+")";
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(690, 540);
         Size = new Size(800, 610);
