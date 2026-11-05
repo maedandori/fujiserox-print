@@ -25,23 +25,24 @@ internal sealed class SettingsForm : Form
     private readonly NumericUpDown seconds = new();
     private readonly ComboBox outputMode = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly TextBox pdfFolder = new();
+    private readonly TextBox printerDisplayName = new();
     private readonly string iniPath = Path.Combine(AppContext.BaseDirectory, "config.ini");
 
     public SettingsForm()
     {
         Text = "Machine-Control - Cài đặt máy in";
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(690, 490);
-        Size = new Size(780, 550);
+        MinimumSize = new Size(690, 540);
+        Size = new Size(800, 610);
         Font = new Font("Segoe UI", 10);
         var grid = new TableLayoutPanel {
-            Dock = DockStyle.Fill, Padding = new Padding(16), ColumnCount = 3, RowCount = 9,
+            Dock = DockStyle.Fill, Padding = new Padding(16), ColumnCount = 3, RowCount = 10,
             AutoSize = false
         };
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
-        for (int i = 0; i < 8; i++) grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 47));
+        for (int i = 0; i < 9; i++) grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 47));
         grid.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         url.Dock = token.Dock = printer.Dock = template.Dock = DockStyle.Fill;
@@ -56,41 +57,47 @@ internal sealed class SettingsForm : Form
         var refreshPrinters = new Button { Text = "Làm mới", Dock = DockStyle.Fill };
         refreshPrinters.Click += (_, _) => RefreshPrinters(printer.Text);
         grid.Controls.Add(refreshPrinters, 2, 2);
-        AddLabel(grid, "File mẫu XLSX", 3); grid.Controls.Add(template, 1, 3);
+        AddLabel(grid, "Tên hiển thị trên web", 3);
+        printerDisplayName.Dock = DockStyle.Fill;
+        printerDisplayName.MaxLength = 100;
+        printerDisplayName.PlaceholderText = "Ví dụ: Máy in phòng vật tư / 1号機";
+        grid.Controls.Add(printerDisplayName, 1, 3);
+        grid.SetColumnSpan(printerDisplayName, 2);
+        AddLabel(grid, "File mẫu XLSX", 4); grid.Controls.Add(template, 1, 4);
         var browse = new Button { Text = "Chọn file...", Dock = DockStyle.Fill };
         browse.Click += (_, _) => {
             using var dlg = new OpenFileDialog { Filter = "Excel Workbook (*.xlsx)|*.xlsx", CheckFileExists = true };
             if (dlg.ShowDialog(this) == DialogResult.OK) template.Text = dlg.FileName;
         };
-        grid.Controls.Add(browse, 2, 3);
-        AddLabel(grid, "Chu kỳ kiểm tra (giây)", 4); grid.Controls.Add(seconds, 1, 4);
-        AddLabel(grid, "Chế độ xuất", 5);
+        grid.Controls.Add(browse, 2, 4);
+        AddLabel(grid, "Chu kỳ kiểm tra (giây)", 5); grid.Controls.Add(seconds, 1, 5);
+        AddLabel(grid, "Chế độ xuất", 6);
         outputMode.Items.AddRange(new object[] { "In ra máy in", "Xuất PDF tự động" });
         outputMode.SelectedIndex = 0;
         outputMode.Dock = DockStyle.Fill;
         outputMode.SelectedIndexChanged += (_, _) => UpdatePdfInputs();
-        grid.Controls.Add(outputMode, 1, 5);
+        grid.Controls.Add(outputMode, 1, 6);
         grid.SetColumnSpan(outputMode, 2);
-        AddLabel(grid, "Thư mục lưu PDF", 6);
+        AddLabel(grid, "Thư mục lưu PDF", 7);
         pdfFolder.Dock = DockStyle.Fill;
         pdfFolder.Text = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Machine-Control-PDF");
-        grid.Controls.Add(pdfFolder, 1, 6);
+        grid.Controls.Add(pdfFolder, 1, 7);
         var browsePdf = new Button { Text = "Chọn thư mục...", Dock = DockStyle.Fill };
         browsePdf.Click += (_, _) => {
             using var folder = new FolderBrowserDialog { Description = "Chọn nơi lưu PDF", ShowNewFolderButton = true };
             if (Directory.Exists(pdfFolder.Text)) folder.SelectedPath = pdfFolder.Text;
             if (folder.ShowDialog(this) == DialogResult.OK) pdfFolder.Text = folder.SelectedPath;
         };
-        grid.Controls.Add(browsePdf, 2, 6);
+        grid.Controls.Add(browsePdf, 2, 7);
         var note = new Label { Text = "Lưu config.ini cùng thư mục với hai ứng dụng. Agent cần chạy khi người dùng Windows đang đăng nhập và Excel 2013 đã được cài.", AutoSize = true, Dock = DockStyle.Fill };
-        grid.Controls.Add(note, 0, 7); grid.SetColumnSpan(note, 3);
+        grid.Controls.Add(note, 0, 8); grid.SetColumnSpan(note, 3);
         var controls = new FlowLayoutPanel { FlowDirection = FlowDirection.RightToLeft, Dock = DockStyle.Fill };
         var save = new Button { Text = "Lưu cấu hình", AutoSize = true, Height = 36 };
         var close = new Button { Text = "Đóng", AutoSize = true, Height = 36 };
         save.Click += (_, _) => SaveConfig();
         close.Click += (_, _) => Close();
         controls.Controls.Add(save); controls.Controls.Add(close);
-        grid.Controls.Add(controls, 0, 8); grid.SetColumnSpan(controls, 3);
+        grid.Controls.Add(controls, 0, 9); grid.SetColumnSpan(controls, 3);
         Controls.Add(grid);
         AcceptButton = save;
         RefreshPrinters("");
@@ -141,6 +148,7 @@ internal sealed class SettingsForm : Form
                 case "apibaseurl": if (!string.IsNullOrWhiteSpace(value)) url.Text = value; break;
                 case "agenttoken": token.Text = value; break;
                 case "printername": RefreshPrinters(value); break;
+                case "printerdisplayname": printerDisplayName.Text = value; break;
                 case "templatepath": template.Text = value; break;
                 case "printmode": outputMode.SelectedIndex = value.Equals("pdf", StringComparison.OrdinalIgnoreCase) ? 1 : 0; break;
                 case "pdfoutputpath": if (!string.IsNullOrWhiteSpace(value)) pdfFolder.Text = value; break;
@@ -162,7 +170,7 @@ internal sealed class SettingsForm : Form
                 throw new InvalidOperationException("Hãy chọn file mẫu .xlsx.");
             if (outputMode.SelectedIndex == 1 && (string.IsNullOrWhiteSpace(pdfFolder.Text) || !Path.IsPathFullyQualified(pdfFolder.Text.Trim())))
                 throw new InvalidOperationException("Thư mục lưu PDF phải là đường dẫn tuyệt đối.");
-            if (new[] { api, token.Text, printer.Text, path, pdfFolder.Text }.Any(x => x.Contains('\r') || x.Contains('\n')))
+            if (new[] { api, token.Text, printer.Text, printerDisplayName.Text, path, pdfFolder.Text }.Any(x => x.Contains('\r') || x.Contains('\n')))
                 throw new InvalidOperationException("Giá trị cấu hình không được chứa ký tự xuống dòng.");
             var selectedPrinter = printer.SelectedIndex <= 0 ? "" : printer.Text;
             if (selectedPrinter.EndsWith(" (không tìm thấy)", StringComparison.Ordinal))
@@ -171,6 +179,7 @@ internal sealed class SettingsForm : Form
                 + "ApiBaseUrl=" + api + "\r\n"
                 + "AgentToken=" + token.Text.Trim() + "\r\n"
                 + "PrinterName=" + selectedPrinter + "\r\n"
+                + "PrinterDisplayName=" + printerDisplayName.Text.Trim() + "\r\n"
                 + "TemplatePath=" + path + "\r\n"
                 + "PollSeconds=" + seconds.Value + "\r\n"
                 + "PrintMode=" + (outputMode.SelectedIndex == 1 ? "pdf" : "printer") + "\r\n"
