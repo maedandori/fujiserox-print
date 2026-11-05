@@ -24,6 +24,8 @@ jobs:
       - name: Build ứng dụng nhận lệnh in
         shell: pwsh
         run: |
+          & ./PrintAgent/generate-icon.ps1
+          if (-not (Test-Path PrintAgent/printer.ico)) { throw "Không tạo được icon máy in" }
           dotnet publish PrintAgent/PrintAgent.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o publish
           Copy-Item publish/Machine-Control-Print-Agent.exe publish/Print-Agent.exe
           Remove-Item publish/Machine-Control-Print-Agent.exe
