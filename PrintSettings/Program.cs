@@ -27,6 +27,49 @@ internal sealed class SettingsForm : Form
     private readonly TextBox pdfFolder = new();
     private readonly TextBox printerDisplayName = new();
     private readonly CheckBox autoUpdate = new() { Text = "Tự động cập nhật khi Agent không in", AutoSize = true, Checked = true };
+    private readonly Button languageButton = new() { AutoSize = true, Height = 36 };
+    private static readonly System.Collections.Generic.Dictionary<string,string> Japanese = new()
+    {
+        ["Hiện token"]="トークン表示",
+        ["Tên máy in (để trống = mặc định)"]="Windowsプリンター",
+        ["Làm mới"]="更新",
+        ["Tên hiển thị trên web"]="Web表示名",
+        ["File mẫu XLSX"]="Excelテンプレート",
+        ["Chọn file..."]="ファイル選択...",
+        ["Chu kỳ kiểm tra (giây)"]="確認間隔（秒）",
+        ["Chế độ xuất"]="出力モード",
+        ["Thư mục lưu PDF"]="PDF保存先",
+        ["Chọn thư mục..."]="フォルダー選択...",
+        ["Tự động cập nhật khi Agent không in"]="待機中に自動更新",
+        ["Lưu cấu hình"]="設定を保存",
+        ["Đóng"]="閉じる",
+        ["Lưu config.ini cùng thư mục với hai ứng dụng. Agent cần chạy khi người dùng Windows đang đăng nhập và Excel 2013 đã được cài."]="設定はEXEと同じフォルダーに保存します。Windowsにサインインし、Excel 2013が必要です。",
+        ["In ra máy in"]="プリンターに印刷",
+        ["Xuất PDF tự động"]="PDFを自動保存",
+        ["(Máy in mặc định Windows)"]="（Windowsの既定プリンター）"
+    };
+    private string L(string vi,string ja)=>UiLanguage.T(vi,ja);
+    private void ApplyLanguage()
+    {
+        Text = UiLanguage.T("Machine-Control - Cài đặt máy in (v","Machine-Control - 印刷設定 (v")
+             + (typeof(Program).Assembly.GetName().Version?.ToString(3)??"1.0.0") + ")";
+        languageButton.Text=UiLanguage.Current=="ja"?"🇯🇵 日本語 → 🇻🇳 Tiếng Việt":"🇻🇳 Tiếng Việt → 🇯🇵 日本語";
+        void Translate(Control control)
+        {
+            if(control.Tag is not string && Japanese.ContainsKey(control.Text))control.Tag=control.Text;
+            if(control.Tag is string original && Japanese.TryGetValue(original,out var japan))
+                control.Text=UiLanguage.Current=="ja"?japan:original;
+            foreach(Control child in control.Controls)Translate(child);
+        }
+        Translate(this);
+        var mode=outputMode.SelectedIndex;
+        outputMode.Items.Clear();
+        outputMode.Items.AddRange(new object[]{UiLanguage.T("In ra máy in","プリンターに印刷"),UiLanguage.T("Xuất PDF tự động","PDFを自動保存")});
+        outputMode.SelectedIndex=mode<0?0:mode;
+        var chosen=printer.SelectedIndex>0?printer.Text:"";
+        RefreshPrinters(chosen);
+        printerDisplayName.PlaceholderText=UiLanguage.T("Ví dụ: Máy in phòng vật tư / 1号機","例: 資材室プリンター / 1号機");
+    }
     private readonly string iniPath = Path.Combine(AppContext.BaseDirectory, "config.ini");
 
     public SettingsForm()
@@ -67,7 +110,7 @@ internal sealed class SettingsForm : Form
         AddLabel(grid, "File mẫu XLSX", 4); grid.Controls.Add(template, 1, 4);
         var browse = new Button { Text = "Chọn file...", Dock = DockStyle.Fill };
         browse.Click += (_, _) => {
-            using var dlg = new OpenFileDialog { Filter = "Excel Workbook (*.xlsx)|*.xlsx", CheckFileExists = true };
+            using var dlg = new OpenFileDialog { Filter = "Excel Workbook (*.xlsx)|*.xlsx", CheckFileExists = true, Title=UiLanguage.T("Chọn mẫu Excel","Excelテンプレートを選択") };
             if (dlg.ShowDialog(this) == DialogResult.OK) template.Text = dlg.FileName;
         };
         grid.Controls.Add(browse, 2, 4);
@@ -85,7 +128,7 @@ internal sealed class SettingsForm : Form
         grid.Controls.Add(pdfFolder, 1, 7);
         var browsePdf = new Button { Text = "Chọn thư mục...", Dock = DockStyle.Fill };
         browsePdf.Click += (_, _) => {
-            using var folder = new FolderBrowserDialog { Description = "Chọn nơi lưu PDF", ShowNewFolderButton = true };
+            using var folder = new FolderBrowserDialog { Description = UiLanguage.T("Chọn nơi lưu PDF","PDF保存先を選択"), ShowNewFolderButton = true };
             if (Directory.Exists(pdfFolder.Text)) folder.SelectedPath = pdfFolder.Text;
             if (folder.ShowDialog(this) == DialogResult.OK) pdfFolder.Text = folder.SelectedPath;
         };
@@ -98,13 +141,15 @@ internal sealed class SettingsForm : Form
         var close = new Button { Text = "Đóng", AutoSize = true, Height = 36 };
         save.Click += (_, _) => SaveConfig();
         close.Click += (_, _) => Close();
-        controls.Controls.Add(save); controls.Controls.Add(close);
+        languageButton.Click += (_,_) => { if (UiLanguage.Set(UiLanguage.Current=="ja"?"vi":"ja")) ApplyLanguage(); else MessageBox.Show(L("Không lưu được ngôn ngữ.","言語設定を保存できません。")); };
+        controls.Controls.Add(save); controls.Controls.Add(close); controls.Controls.Add(languageButton);
         grid.Controls.Add(controls, 0, 10); grid.SetColumnSpan(controls, 3);
         Controls.Add(grid);
         AcceptButton = save;
         RefreshPrinters("");
         LoadConfig();
         UpdatePdfInputs();
+        ApplyLanguage();
     }
     private static void AddLabel(TableLayoutPanel grid, string name, int row) =>
         grid.Controls.Add(new Label { Text = name, AutoSize = true, Anchor = AnchorStyles.Left }, 0, row);
@@ -114,7 +159,7 @@ internal sealed class SettingsForm : Form
         try
         {
             printer.Items.Clear();
-            printer.Items.Add("(Máy in mặc định Windows)");
+            printer.Items.Add(L("(Máy in mặc định Windows)","（Windowsの既定プリンター）"));
             foreach (string installed in PrinterSettings.InstalledPrinters)
                 printer.Items.Add(installed);
             if (!string.IsNullOrWhiteSpace(preferred) && !printer.Items.Contains(preferred))
@@ -125,7 +170,7 @@ internal sealed class SettingsForm : Form
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, "Không đọc được danh sách máy in: " + ex.Message, "Lỗi máy in");
+            MessageBox.Show(this, L("Không đọc được danh sách máy in: ","プリンター一覧を読み取れません: ") + ex.Message, L("Lỗi máy in","プリンターエラー"));
         }
     }
 
@@ -134,7 +179,7 @@ internal sealed class SettingsForm : Form
         bool isPdf = outputMode.SelectedIndex == 1;
         pdfFolder.Enabled = isPdf;
         foreach (Control control in Controls[0].Controls)
-            if (control is Button button && button.Text == "Chọn thư mục...") button.Enabled = isPdf;
+            if (control is Button button && (button.Tag as string ?? button.Text) == "Chọn thư mục...") button.Enabled = isPdf;
     }
 
     private void LoadConfig()
@@ -191,8 +236,8 @@ internal sealed class SettingsForm : Form
             var temp = iniPath + ".tmp";
             File.WriteAllText(temp, text, new UTF8Encoding(false));
             File.Move(temp, iniPath, true);
-            MessageBox.Show(this, "Đã lưu: " + iniPath + "\nHãy khởi động lại Print-Agent.exe để áp dụng thay đổi.", "Thành công");
+            MessageBox.Show(this, L("Đã lưu: ","保存しました: ") + iniPath + L("\nHãy khởi động lại Print-Agent.exe để áp dụng thay đổi.","\n変更を適用するには Print-Agent.exe を再起動してください。"), L("Thành công","保存完了"));
         }
-        catch (Exception ex) { MessageBox.Show(this, ex.Message, "Không lưu được", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+        catch (Exception ex) { MessageBox.Show(this, ex.Message, L("Không lưu được","保存エラー"), MessageBoxButtons.OK, MessageBoxIcon.Error); }
     }
 }
