@@ -15,26 +15,49 @@ internal sealed class TrayAgentContext : ApplicationContext
     private readonly object logLock = new();
     private string lastStatus = "Đang khởi động";
     private bool exiting;
+    private readonly ToolStripMenuItem vietnameseItem;
+    private readonly ToolStripMenuItem japaneseItem;
+    private readonly ToolStripMenuItem statusItem;
+    private readonly ToolStripMenuItem settingsItem;
+    private readonly ToolStripMenuItem logItem;
+    private readonly ToolStripMenuItem updateItem;
+    private readonly ToolStripMenuItem exitItem;
+    private readonly ToolStripItem versionItem;
 
     public TrayAgentContext()
     {
         dispatcher.CreateControl();
         var menu = new ContextMenuStrip();
-        var versionItem = menu.Items.Add("Phiên bản v"+AutoUpdate.Version);
-        versionItem.Enabled = false;
-        menu.Items.Add("Kiểm tra cập nhật", null, (_, _) =>
-        {
+        versionItem=menu.Items.Add("");
+        versionItem.Enabled=false;
+        var languageMenu=new ToolStripMenuItem();
+        vietnameseItem=new ToolStripMenuItem("🇻🇳 Tiếng Việt");
+        japaneseItem=new ToolStripMenuItem("🇯🇵 日本語");
+        vietnameseItem.Click+=(_,_)=>ChangeLanguage("vi");
+        japaneseItem.Click+=(_,_)=>ChangeLanguage("ja");
+        languageMenu.DropDownItems.Add(vietnameseItem);
+        languageMenu.DropDownItems.Add(japaneseItem);
+        menu.Items.Add(languageMenu);
+        updateItem=new ToolStripMenuItem();
+        updateItem.Click+=(_,_)=>{
             AutoUpdate.RequestCheck();
-            UpdateStatus("Đã yêu cầu kiểm tra phiên bản khi hàng đợi rảnh.");
-        });
-        menu.Items.Add("Xem trạng thái", null, (_, _) =>
-            MessageBox.Show(lastStatus, "Machine-Control Print Agent",
-                MessageBoxButtons.OK, MessageBoxIcon.Information));
-        menu.Items.Add("Mở cài đặt", null, (_, _) => OpenSettings());
-        menu.Items.Add("Xem nhật ký", null, (_, _) => OpenLog());
+            UpdateStatus(UiLanguage.T("Đã yêu cầu kiểm tra phiên bản khi hàng đợi rảnh.","印刷待機時に更新を確認します。"));
+        };
+        menu.Items.Add(updateItem);
+        statusItem=new ToolStripMenuItem();
+        statusItem.Click+=(_,_)=>MessageBox.Show(lastStatus, "Machine-Control Print Agent",MessageBoxButtons.OK,MessageBoxIcon.Information);
+        menu.Items.Add(statusItem);
+        settingsItem=new ToolStripMenuItem();
+        settingsItem.Click+=(_,_)=>OpenSettings();
+        menu.Items.Add(settingsItem);
+        logItem=new ToolStripMenuItem();
+        logItem.Click+=(_,_)=>OpenLog();
+        menu.Items.Add(logItem);
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Thoát Print Agent", null, (_, _) => StopAgent());
-
+        exitItem=new ToolStripMenuItem();
+        exitItem.Click+=(_,_)=>StopAgent();
+        menu.Items.Add(exitItem);
+        ApplyLanguage(languageMenu);
         printerIcon = PrinterTrayIcon.Create();
         tray = new NotifyIcon
         {
@@ -60,6 +83,30 @@ internal sealed class TrayAgentContext : ApplicationContext
         };
         worker.SetApartmentState(ApartmentState.STA);
         worker.Start();
+    }
+
+    private void ChangeLanguage(string language)
+    {
+        if (!UiLanguage.Set(language))
+        {
+            MessageBox.Show(UiLanguage.T("Không lưu được ngôn ngữ.","言語設定を保存できません。"),"Machine-Control");
+            return;
+        }
+        // The other EXE reads the same language file on its next launch.
+        var languageMenu=vietnameseItem.OwnerItem as ToolStripMenuItem;
+        if(languageMenu!=null)ApplyLanguage(languageMenu);
+    }
+    private void ApplyLanguage(ToolStripMenuItem languageMenu)
+    {
+        versionItem.Text=UiLanguage.T("Phiên bản ","バージョン ")+AutoUpdate.Version;
+        languageMenu.Text=UiLanguage.T("Ngôn ngữ / 言語","言語 / Ngôn ngữ");
+        vietnameseItem.Checked=UiLanguage.Current=="vi";
+        japaneseItem.Checked=UiLanguage.Current=="ja";
+        updateItem.Text=UiLanguage.T("Kiểm tra cập nhật","更新を確認");
+        statusItem.Text=UiLanguage.T("Xem trạng thái","状態を表示");
+        settingsItem.Text=UiLanguage.T("Mở cài đặt","設定を開く");
+        logItem.Text=UiLanguage.T("Xem nhật ký","ログを表示");
+        exitItem.Text=UiLanguage.T("Thoát Print Agent","Print Agent を終了");
     }
 
     private void UpdateStatus(string message)
@@ -88,11 +135,11 @@ internal sealed class TrayAgentContext : ApplicationContext
         var path = Path.Combine(AppContext.BaseDirectory, "Print-Settings.exe");
         if (!File.Exists(path))
         {
-            MessageBox.Show("Không tìm thấy Print-Settings.exe cùng thư mục Agent.", "Machine-Control");
+            MessageBox.Show(UiLanguage.T("Không tìm thấy Print-Settings.exe cùng thư mục Agent.","Agentと同じフォルダーに Print-Settings.exe がありません。"), "Machine-Control");
             return;
         }
         try { Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); }
-        catch (Exception ex) { MessageBox.Show(ex.Message, "Lỗi mở cài đặt"); }
+        catch (Exception ex) { MessageBox.Show(ex.Message,UiLanguage.T("Lỗi mở cài đặt","設定を開けません")); }
     }
 
     private void OpenLog()
@@ -100,13 +147,13 @@ internal sealed class TrayAgentContext : ApplicationContext
         var path = Path.Combine(AppContext.BaseDirectory, "print-agent.log");
         try
         {
-            if (!File.Exists(path)) File.WriteAllText(path, "Chưa có nhật ký.");
+            if (!File.Exists(path)) File.WriteAllText(path,UiLanguage.T("Chưa có nhật ký.","ログがありません。"));
             Process.Start(new ProcessStartInfo("notepad.exe")
             {
                 UseShellExecute = true, Arguments = "\"" + path + "\""
             });
         }
-        catch (Exception ex) { MessageBox.Show(ex.Message, "Lỗi mở nhật ký"); }
+        catch (Exception ex) { MessageBox.Show(ex.Message,UiLanguage.T("Lỗi mở nhật ký","ログを開けません")); }
     }
 
     private void StopAgent()
