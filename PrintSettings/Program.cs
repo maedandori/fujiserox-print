@@ -26,23 +26,24 @@ internal sealed class SettingsForm : Form
     private readonly ComboBox outputMode = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly TextBox pdfFolder = new();
     private readonly TextBox printerDisplayName = new();
+    private readonly CheckBox autoUpdate = new() { Text = "Tự động cập nhật khi Agent không in", AutoSize = true, Checked = true };
     private readonly string iniPath = Path.Combine(AppContext.BaseDirectory, "config.ini");
 
     public SettingsForm()
     {
         Text = "Machine-Control - Cài đặt máy in (v"+(typeof(Program).Assembly.GetName().Version?.ToString(3)??"1.0.0")+")";
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(690, 540);
-        Size = new Size(800, 610);
+        MinimumSize = new Size(690, 580);
+        Size = new Size(800, 660);
         Font = new Font("Segoe UI", 10);
         var grid = new TableLayoutPanel {
-            Dock = DockStyle.Fill, Padding = new Padding(16), ColumnCount = 3, RowCount = 10,
+            Dock = DockStyle.Fill, Padding = new Padding(16), ColumnCount = 3, RowCount = 11,
             AutoSize = false
         };
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
-        for (int i = 0; i < 9; i++) grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 47));
+        for (int i = 0; i < 10; i++) grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 47));
         grid.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         url.Dock = token.Dock = printer.Dock = template.Dock = DockStyle.Fill;
@@ -90,14 +91,15 @@ internal sealed class SettingsForm : Form
         };
         grid.Controls.Add(browsePdf, 2, 7);
         var note = new Label { Text = "Lưu config.ini cùng thư mục với hai ứng dụng. Agent cần chạy khi người dùng Windows đang đăng nhập và Excel 2013 đã được cài.", AutoSize = true, Dock = DockStyle.Fill };
-        grid.Controls.Add(note, 0, 8); grid.SetColumnSpan(note, 3);
+        grid.Controls.Add(autoUpdate, 0, 8); grid.SetColumnSpan(autoUpdate, 3);
+        grid.Controls.Add(note, 0, 9); grid.SetColumnSpan(note, 3);
         var controls = new FlowLayoutPanel { FlowDirection = FlowDirection.RightToLeft, Dock = DockStyle.Fill };
         var save = new Button { Text = "Lưu cấu hình", AutoSize = true, Height = 36 };
         var close = new Button { Text = "Đóng", AutoSize = true, Height = 36 };
         save.Click += (_, _) => SaveConfig();
         close.Click += (_, _) => Close();
         controls.Controls.Add(save); controls.Controls.Add(close);
-        grid.Controls.Add(controls, 0, 9); grid.SetColumnSpan(controls, 3);
+        grid.Controls.Add(controls, 0, 10); grid.SetColumnSpan(controls, 3);
         Controls.Add(grid);
         AcceptButton = save;
         RefreshPrinters("");
@@ -149,6 +151,7 @@ internal sealed class SettingsForm : Form
                 case "agenttoken": token.Text = value; break;
                 case "printername": RefreshPrinters(value); break;
                 case "printerdisplayname": printerDisplayName.Text = value; break;
+                case "autoupdateenabled": autoUpdate.Checked = value != "0"; break;
                 case "templatepath": template.Text = value; break;
                 case "printmode": outputMode.SelectedIndex = value.Equals("pdf", StringComparison.OrdinalIgnoreCase) ? 1 : 0; break;
                 case "pdfoutputpath": if (!string.IsNullOrWhiteSpace(value)) pdfFolder.Text = value; break;
@@ -183,7 +186,8 @@ internal sealed class SettingsForm : Form
                 + "TemplatePath=" + path + "\r\n"
                 + "PollSeconds=" + seconds.Value + "\r\n"
                 + "PrintMode=" + (outputMode.SelectedIndex == 1 ? "pdf" : "printer") + "\r\n"
-                + "PdfOutputPath=" + pdfFolder.Text.Trim() + "\r\n";
+                + "PdfOutputPath=" + pdfFolder.Text.Trim() + "\r\n"
+                + "AutoUpdateEnabled=" + (autoUpdate.Checked ? "1" : "0") + "\r\n";
             var temp = iniPath + ".tmp";
             File.WriteAllText(temp, text, new UTF8Encoding(false));
             File.Move(temp, iniPath, true);
