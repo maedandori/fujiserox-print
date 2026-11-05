@@ -22,7 +22,8 @@ internal static class IniConfig
         if (!int.TryParse(Get("PollSeconds", "3"), out int seconds))
             throw new InvalidDataException("PollSeconds phải là số nguyên.");
         return new AgentConfig { ApiBaseUrl = Get("ApiBaseUrl"), AgentToken = Get("AgentToken"),
-            PrinterName = Get("PrinterName"), TemplatePath = Get("TemplatePath", "template.xlsx"), PollSeconds = seconds };
+            PrinterName = Get("PrinterName"), TemplatePath = Get("TemplatePath", "template.xlsx"), PollSeconds = seconds,
+            PrintMode = Get("PrintMode", "printer"), PdfOutputPath = Get("PdfOutputPath") };
     }
 }
 internal sealed class AgentConfig
@@ -32,6 +33,8 @@ internal sealed class AgentConfig
     public string PrinterName { get; set; } = "";
     public string TemplatePath { get; set; } = "template.xlsx";
     public int PollSeconds { get; set; } = 3;
+    public string PrintMode { get; set; } = "printer";
+    public string PdfOutputPath { get; set; } = "";
 }
 internal sealed class PrintCard
 {
@@ -186,6 +189,13 @@ internal static class Program
         template = Path.GetFullPath(template);
         if (!File.Exists(template) || !template.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
             throw new FileNotFoundException("Không tìm thấy template XLSX: " + template);
+        if (config.PrintMode.Equals("pdf", StringComparison.OrdinalIgnoreCase))
+        {
+            ExportPdf(config, job, template);
+            return;
+        }
+        if (!config.PrintMode.Equals("printer", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("PrintMode chỉ hỗ trợ printer hoặc pdf.");
         var excelType = Type.GetTypeFromProgID("Excel.Application")
             ?? throw new InvalidOperationException("Không tìm thấy Microsoft Excel (Office 2013) trên máy.");
         object? excelObject = null;
@@ -278,6 +288,131 @@ internal static class Program
             GC.Collect();
             GC.WaitForPendingFinalizers();
         }
+    }
+
+    private static void ExportPdf(AgentConfig config, PrintJob job, string template)
+    {
+        var folder = config.PdfOutputPath;
+        if (string.IsNullOrWhiteSpace(folder))
+            folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Machine-Control-PDF");
+        if (!Path.IsPathFullyQualified(folder))
+            throw new InvalidDataException("PdfOutputPath phải là đường dẫn tuyệt đối.");
+        folder = Path.GetFullPath(folder);
+        Directory.CreateDirectory(folder);
+        var excelType = Type.GetTypeFromProgID("Excel.Application")
+            ?? throw new InvalidOperationException("Không tìm thấy Microsoft Excel (Office 2013).");
+        object? excelObject = null, workbookObject = null;
+        try
+        {
+            excelObject = Activator.CreateInstance(excelType)
+                ?? throw new InvalidOperationException("Không thể mở Excel để xuất PDF.");
+            dynamic excel = excelObject;
+            excel.Visible = false;
+            excel.DisplayAlerts = false;
+            excel.AutomationSecurity = 3;
+            workbookObject = excel.Workbooks.Open(template, ReadOnly: true, UpdateLinks: 0);
+            dynamic workbook = workbookObject;
+            string[] names = { "B8", "H8", "N8", "T8", "B32", "H32", "N32", "T32" };
+            string[] colors = { "B12", "H12", "N12", "T12", "B36", "H36", "N36", "T36" };
+            string[] quantities = { "B16", "H16", "N16", "T16", "B40", "H40", "N40", "T40" };
+            string[] numbers = { "E20", "K20", "Q20", "W20", "E44", "K44", "Q44", "W44" };
+            int total = job.Cards?.Count ?? 0;
+            int pages = total == 0 ? 1 : (total + 7) / 8;
+            // Create new sheets in the same workbook to export all cards in ONE PDF.
+            // Multiple copies duplicate the pages, preserving the printed serial numbers.
+            object? baseSheetObject = null;
+            try
+            {
+                baseSheetObject = workbook.Worksheets["原紙"];
+                dynamic baseSheet = baseSheetObject;
+                for (int copy = 0; copy < job.Copies; copy++)
+                {
+                    for (int page = 0; page < pages; page++)
+                    {
+                        object? sheetObject = null;
+                        bool releaseSheet = false;
+                        try
+                        {
+                            if (copy == 0 && page == 0)
+                                sheetObject = baseSheetObject;
+                            else
+                            {
+                                // Copy the untouched template sheet; populate each copy independently.
+                                baseSheet.Copy(After: workbook.Worksheets[workbook.Worksheets.Count]);
+                                sheetObject = workbook.Worksheets[workbook.Worksheets.Count];
+                                releaseSheet = true;
+                            }
+                            dynamic sheet = sheetObject!;
+                            if (job.Cards is { Count: > 0 })
+                            {
+                                for (int i = 0; i < 8; i++)
+                                {
+                                    int cardIndex = page * 8 + i;
+                                    var card = cardIndex < total ? job.Cards[cardIndex] : null;
+                                    SetPdfCell(sheet, names[i], card?.Name ?? "");
+                                    SetPdfCell(sheet, colors[i], card?.Color ?? "");
+                                    SetPdfCell(sheet, quantities[i], card?.Quantity ?? "");
+                                    SetPdfCell(sheet, numbers[i],
+                                        card is null ? "" : checked(job.StartNumber + cardIndex).ToString(System.Globalization.CultureInfo.InvariantCulture));
+                                }
+                            }
+                            foreach (var (location, value) in job.Cells)
+                            {
+                                var separator = location.LastIndexOf('!');
+                                var sheetName = separator < 0 ? "" : location[..separator].Trim(' ', '\'');
+                                var address = separator < 0 ? location : location[(separator + 1)..];
+                                if (!AddressPattern.IsMatch(address) || sheetName.Length > 31 ||
+                                    (!string.IsNullOrEmpty(sheetName) && sheetName != "原紙"))
+                                    throw new InvalidDataException("Địa chỉ ô không hợp lệ trên sheet 原紙: " + location);
+                                SetPdfCell(sheet, address, value ?? "");
+                            }
+                        }
+                        finally
+                        {
+                            if (releaseSheet) Release(sheetObject);
+                        }
+                    }
+                }
+            }
+            finally { Release(baseSheetObject); }
+            var safeId = Regex.Replace(job.JobId, @"[^a-zA-Z0-9_-]", "_");
+            var path = Path.Combine(folder, $"MaterialCards_{DateTime.Now:yyyyMMdd_HHmmss_fff}_{safeId}_{Guid.NewGuid():N}.pdf");
+            // xlTypePDF=0, xlQualityStandard=0; honor the template's print areas.
+            workbook.ExportAsFixedFormat(0, path, 0, true, false);
+            if (!File.Exists(path) || new FileInfo(path).Length == 0)
+                throw new IOException("Excel không tạo được PDF hợp lệ.");
+            Console.WriteLine("Đã xuất PDF: " + path);
+        }
+        finally
+        {
+            if (workbookObject != null)
+            {
+                try { ((dynamic)workbookObject).Close(SaveChanges: false); }
+                catch (Exception ex) { Console.Error.WriteLine("Không đóng được workbook PDF: " + ex.Message); }
+                Release(workbookObject);
+            }
+            if (excelObject != null)
+            {
+                try { ((dynamic)excelObject).Quit(); }
+                catch (Exception ex) { Console.Error.WriteLine("Không đóng được Excel PDF: " + ex.Message); }
+                Release(excelObject);
+            }
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+        }
+    }
+
+    private static void SetPdfCell(dynamic sheet, string address, string value)
+    {
+        if (!AddressPattern.IsMatch(address) || value.Length > 1000)
+            throw new InvalidDataException("Địa chỉ hoặc nội dung PDF không hợp lệ: " + address);
+        object? rangeObject = null;
+        try
+        {
+            rangeObject = sheet.Range[address];
+            ((dynamic)rangeObject).Value2 = value;
+        }
+        finally { Release(rangeObject); }
     }
 
     private static void Release(object? value)
