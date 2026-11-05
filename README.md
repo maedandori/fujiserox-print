@@ -101,3 +101,16 @@ Bản Print-Agent.exe mới tạo `agent-id.txt` chứa mã UUID riêng trong th
 Machine-Control sẽ không cấp lệnh in cho Agent đời cũ không gửi Agent ID. Cần tải Print-Agent.exe từ artifact build mới và thay trên *tất cả* máy Windows muốn sử dụng.
 
 Trong trang 部材印, chọn tên máy Windows và tên máy in trước khi gửi thử. API báo `submitted` nghĩa là đã gửi tới Windows spooler, không chứng minh giấy đã được in thành công. Nếu Agent đã nhận lệnh nhưng mất kết nối, lệnh sẽ để trạng thái `claimed` để tránh tự động in trùng.
+
+
+## Chế độ xuất PDF tự động (Excel 2013)
+
+Print-Settings.exe có lựa chọn **In ra máy in** hoặc **Xuất PDF tự động**, cùng nút chọn thư mục lưu PDF. Khi chọn PDF, chương trình ghi `PrintMode=pdf` và `PdfOutputPath=C:\\...\\PDF` vào `config.ini`. Chế độ cũ `PrintMode=printer` vẫn giữ nguyên; INI cũ không có hai khóa này sẽ mặc định in giấy.
+
+Khi Agent nhận lệnh, nó dùng Excel 2013 COM để tạo **một file PDF nhiều trang**, 8 thẻ/trang theo mẫu `原紙`. Bản gốc XLSX chỉ được mở ReadOnly, không lưu thay đổi. Nếu yêu cầu `copies>1`, file PDF sẽ chứa các trang lặp lại tương ứng với số bản sao, giữ nguyên số thứ tự trên từng bản sao. File được đặt tên theo thời gian, mã job và chuỗi ngẫu nhiên để tránh ghi đè.
+
+PDF được xuất trực tiếp bằng `Workbook.ExportAsFixedFormat`, **không sử dụng Microsoft Print to PDF**, vì vậy không hiện hộp thoại Save As, không phụ thuộc máy in PDF được chọn. Thư mục phải tồn tại hoặc Agent có quyền tạo và ghi. Chế độ này vẫn dùng Agent ID, Agent Token, heartbeat và hàng đợi in Machine-Control như trước; không cần sửa API web để xuất PDF tại Windows.
+
+Biểu tượng khay hệ thống của Agent đã thay bằng **hình máy in**. Sau khi thay hai EXE, chạy Print-Settings để chọn chế độ, lưu cấu hình rồi thoát/mở lại Agent từ System Tray. **Giữ nguyên `config.ini` và `agent-id.txt` cũ; không xóa Agent ID**.
+
+Chưa thử nghiệm PDF thực tế với Excel 2013: cần kiểm tra file PDF đầu tiên, số trang, vùng in, font và cách Excel nhân bản sheet trong template thật. Nếu file không sinh ra, xem `print-agent.log` và đường dẫn thư mục đã cài.
