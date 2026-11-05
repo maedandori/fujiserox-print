@@ -86,7 +86,7 @@ internal static class Program
                 var testPath = Path.Combine(Root, "sample-job.json");
                 var job = ReadJob(File.ReadAllText(testPath));
                 PrintExcel(config, job);
-                Console.WriteLine("Đã gửi bản in thử đến Windows Print Spooler (chưa xác nhận giấy đã in xong).");
+                Console.WriteLine(config.PrintMode.Equals("pdf", StringComparison.OrdinalIgnoreCase) ? "Đã tạo file PDF thử." : "Đã gửi bản in thử đến Windows Print Spooler.");
                 return 0;
             }
             if (string.IsNullOrWhiteSpace(config.ApiBaseUrl) || string.IsNullOrWhiteSpace(config.AgentToken))
@@ -130,8 +130,9 @@ internal static class Program
                     {
                         PrintExcel(config, job);
                         Report(client, job.JobId, "submitted", null);
-                        status("Đã gửi in: " + job.JobId);
-                        Console.WriteLine($"Đã gửi đến hàng đợi in Windows: {job.JobId}");
+                        status((config.PrintMode.Equals("pdf", StringComparison.OrdinalIgnoreCase) ? "Đã tạo PDF: " : "Đã gửi in: ") + job.JobId);
+                        Console.WriteLine(config.PrintMode.Equals("pdf", StringComparison.OrdinalIgnoreCase)
+                            ? $"Đã xuất PDF từ lệnh: {job.JobId}" : $"Đã gửi đến hàng đợi in Windows: {job.JobId}");
                     }
                     catch (Exception error)
                     {
@@ -333,15 +334,11 @@ internal static class Program
                         bool releaseSheet = false;
                         try
                         {
-                            if (copy == 0 && page == 0)
-                                sheetObject = baseSheetObject;
-                            else
-                            {
-                                // Copy the untouched template sheet; populate each copy independently.
-                                baseSheet.Copy(After: workbook.Worksheets[workbook.Worksheets.Count]);
-                                sheetObject = workbook.Worksheets[workbook.Worksheets.Count];
-                                releaseSheet = true;
-                            }
+                            // Always duplicate the original template BEFORE filling it.
+                            // This prevents page 2 from inheriting data from page 1.
+                            baseSheet.Copy(After: workbook.Worksheets[workbook.Worksheets.Count]);
+                            sheetObject = workbook.Worksheets[workbook.Worksheets.Count];
+                            releaseSheet = true;
                             dynamic sheet = sheetObject!;
                             if (job.Cards is { Count: > 0 })
                             {
@@ -373,6 +370,8 @@ internal static class Program
                         }
                     }
                 }
+                // Exclude the unfilled template sheet from the final PDF.
+                baseSheet.Delete();
             }
             finally { Release(baseSheetObject); }
             var safeId = Regex.Replace(job.JobId, @"[^a-zA-Z0-9_-]", "_");
