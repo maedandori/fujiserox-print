@@ -128,6 +128,6 @@ internal static class AutoUpdate
             UseShellExecute=false,CreateNoWindow=true,WindowStyle=ProcessWindowStyle.Hidden,
             Arguments="-NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand "+encoded
         };
-        Process.Start(process) ?? throw new InvalidOperationException("Không thể chạy Windows Updater.");
+        _ = Process.Start(process) ?? throw new InvalidOperationException("Không thể chạy Windows Updater.");
     }
 }
