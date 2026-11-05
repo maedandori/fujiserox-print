@@ -8,6 +8,7 @@ using System.Windows.Forms;
 internal sealed class TrayAgentContext : ApplicationContext
 {
     private readonly NotifyIcon tray;
+    private readonly Icon printerIcon;
     private readonly CancellationTokenSource stopping = new();
     private readonly Thread worker;
     private readonly object logLock = new();
@@ -25,10 +26,11 @@ internal sealed class TrayAgentContext : ApplicationContext
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Thoát Print Agent", null, (_, _) => StopAgent());
 
+        printerIcon = PrinterTrayIcon.Create();
         tray = new NotifyIcon
         {
             Text = "Machine-Control Print Agent",
-            Icon = SystemIcons.Application,
+            Icon = printerIcon,
             ContextMenuStrip = menu,
             Visible = true
         };
@@ -99,6 +101,7 @@ internal sealed class TrayAgentContext : ApplicationContext
         stopping.Cancel();
         tray.Visible = false;
         tray.Dispose();
+        printerIcon.Dispose();
         // The non-background printing worker completes any Excel COM operation
         // before the process ends; do not kill Excel in the middle of a job.
         ExitThread();
