@@ -114,3 +114,11 @@ PDF được xuất trực tiếp bằng `Workbook.ExportAsFixedFormat`, **khôn
 Biểu tượng khay hệ thống của Agent đã thay bằng **hình máy in**. Sau khi thay hai EXE, chạy Print-Settings để chọn chế độ, lưu cấu hình rồi thoát/mở lại Agent từ System Tray. **Giữ nguyên `config.ini` và `agent-id.txt` cũ; không xóa Agent ID**.
 
 Chưa thử nghiệm PDF thực tế với Excel 2013: cần kiểm tra file PDF đầu tiên, số trang, vùng in, font và cách Excel nhân bản sheet trong template thật. Nếu file không sinh ra, xem `print-agent.log` và đường dẫn thư mục đã cài.
+
+## Tên hiển thị máy in trên Machine-Control
+
+Trong Print-Settings có trường **Tên hiển thị trên web** (ví dụ `Máy in phòng vật tư`). Giá trị lưu dưới khóa `PrinterDisplayName` của `config.ini`, hoàn toàn tách biệt với `PrinterName` là tên máy in/driver Windows dùng để in thực sự.
+
+Agent gửi `printerDisplayName` cùng `agentId`, `machineName`, `printerName` qua heartbeat. Trên trang 部材印, tên tùy chỉnh được hiển thị nổi bật; tên Windows/driver vẫn nằm ở dòng thông tin phụ để đối chiếu. Không thay đổi tên PC, driver hoặc Agent ID. Nếu chưa đặt tên, website dùng tên driver/máy Windows cũ.
+
+Sau khi đổi tên, bấm **Lưu cấu hình**, thoát và mở lại Print Agent để nhận cấu hình mới. Agent gửi heartbeat mỗi 60 giây; nhấn **接続確認** trên web sau khi Agent đã cập nhật trạng thái. Không sao chép `agent-id.txt` giữa các PC.
