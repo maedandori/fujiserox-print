@@ -6,6 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>Machine-Control-Print-Agent</AssemblyName>
+    <ApplicationIcon Condition="Exists('printer.ico')">printer.ico</ApplicationIcon>
     <Version>1.0.0</Version>
   </PropertyGroup>
 </Project>
