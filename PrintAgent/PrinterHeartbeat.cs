@@ -55,7 +55,7 @@ internal static class PrinterHeartbeat
         }
         // Driver reporting no error is NOT proof that paper is present.
         using var response=client.PostAsJsonAsync("api/print-agent/status/heartbeat",
-            new {agentId,machineName=Environment.MachineName,printerName=name,printerDisplayName=config.PrinterDisplayName.Trim(),printerValid=valid,paperStatus=paper,windowsStatus=status})
+            new {agentId,machineName=Environment.MachineName,printerName=name,printerDisplayName=config.PrinterDisplayName.Trim(),agentVersion=AutoUpdate.Version,printerValid=valid,paperStatus=paper,windowsStatus=status})
             .GetAwaiter().GetResult();
         response.EnsureSuccessStatusCode();
     }
