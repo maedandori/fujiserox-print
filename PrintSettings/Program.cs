@@ -24,6 +24,7 @@ internal sealed class SettingsForm : Form
     private readonly TextBox url = new() { Text = DefaultApiUrl }, token = new(), template = new();
     private readonly ComboBox printer = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly NumericUpDown seconds = new();
+    private readonly NumericUpDown maxPdfPages = new() { Minimum = 1, Maximum = 100, Value = 96, Width = 110 };
     private readonly ComboBox outputMode = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly TextBox pdfFolder = new();
     private readonly TextBox pdfPrinterExe = new() { Text = "SumatraPDF.exe" };
@@ -50,6 +51,7 @@ internal sealed class SettingsForm : Form
         ["Lưu config.ini cùng thư mục với hai ứng dụng. Agent cần chạy khi người dùng Windows đang đăng nhập và Excel 2013 đã được cài."]="設定はEXEと同じフォルダーに保存します。Windowsにサインインし、Excel 2013が必要です。",
         ["Xuất PDF rồi in"]="PDFを作成して印刷",
         ["Bộ in PDF (SumatraPDF)"]="PDF印刷ツール (SumatraPDF)",
+        ["Số trang tối đa mỗi PDF"]="PDFごとの最大ページ数",
         ["Chọn EXE..."]="EXEを選択...",
         ["Xuất PDF tự động"]="PDFを自動保存",
         ["(Máy in mặc định Windows)"]="（Windowsの既定プリンター）"
@@ -82,17 +84,17 @@ internal sealed class SettingsForm : Form
     {
         Text = "Machine-Control - Cài đặt máy in (v"+(typeof(Program).Assembly.GetName().Version?.ToString(3)??"1.0.0")+")";
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(690, 680);
-        Size = new Size(800, 755);
+        MinimumSize = new Size(690, 730);
+        Size = new Size(800, 810);
         Font = new Font("Segoe UI", 10);
         var grid = new TableLayoutPanel {
-            Dock = DockStyle.Fill, Padding = new Padding(16), ColumnCount = 3, RowCount = 13,
+            Dock = DockStyle.Fill, Padding = new Padding(16), ColumnCount = 3, RowCount = 14,
             AutoSize = false
         };
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
-        for (int i = 0; i < 12; i++) grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 47));
+        for (int i = 0; i < 13; i++) grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 47));
         grid.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         url.Dock = token.Dock = printer.Dock = template.Dock = DockStyle.Fill;
@@ -149,10 +151,12 @@ internal sealed class SettingsForm : Form
             if (dialog.ShowDialog(this) == DialogResult.OK) pdfPrinterExe.Text = dialog.FileName;
         };
         grid.Controls.Add(choosePdfPrinter, 2, 8);
+        AddLabel(grid, "Số trang tối đa mỗi PDF", 9);
+        grid.Controls.Add(maxPdfPages, 1, 9);
         var note = new Label { Text = "Lưu config.ini cùng thư mục với hai ứng dụng. Agent cần chạy khi người dùng Windows đang đăng nhập và Excel 2013 đã được cài.", AutoSize = true, Dock = DockStyle.Fill };
-        grid.Controls.Add(autoUpdate, 0, 9); grid.SetColumnSpan(autoUpdate, 3);
-        grid.Controls.Add(startWithWindows, 0, 10); grid.SetColumnSpan(startWithWindows, 3);
-        grid.Controls.Add(note, 0, 11); grid.SetColumnSpan(note, 3);
+        grid.Controls.Add(autoUpdate, 0, 10); grid.SetColumnSpan(autoUpdate, 3);
+        grid.Controls.Add(startWithWindows, 0, 11); grid.SetColumnSpan(startWithWindows, 3);
+        grid.Controls.Add(note, 0, 12); grid.SetColumnSpan(note, 3);
         var controls = new FlowLayoutPanel { FlowDirection = FlowDirection.RightToLeft, Dock = DockStyle.Fill };
         var save = new Button { Text = "Lưu cấu hình", AutoSize = true, Height = 36 };
         var close = new Button { Text = "Đóng", AutoSize = true, Height = 36 };
@@ -160,7 +164,7 @@ internal sealed class SettingsForm : Form
         close.Click += (_, _) => Close();
         languageButton.Click += (_,_) => { if (UiLanguage.Set(UiLanguage.Current=="ja"?"vi":"ja")) ApplyLanguage(); else MessageBox.Show(L("Không lưu được ngôn ngữ.","言語設定を保存できません。")); };
         controls.Controls.Add(save); controls.Controls.Add(close); controls.Controls.Add(languageButton);
-        grid.Controls.Add(controls, 0, 12); grid.SetColumnSpan(controls, 3);
+        grid.Controls.Add(controls, 0, 13); grid.SetColumnSpan(controls, 3);
         Controls.Add(grid);
         AcceptButton = save;
         RefreshPrinters("");
@@ -223,6 +227,7 @@ internal sealed class SettingsForm : Form
                 case "pdfprinterexe": if (!string.IsNullOrWhiteSpace(value)) pdfPrinterExe.Text = value; break;
                 case "pdfoutputpath": if (!string.IsNullOrWhiteSpace(value)) pdfFolder.Text = value; break;
                 case "pollseconds": if (int.TryParse(value, out int n)) seconds.Value = Math.Clamp(n, 2, 300); break;
+                case "maxpdfpages": if (int.TryParse(value, out int pages)) maxPdfPages.Value = Math.Clamp(pages, 1, 100); break;
             }
         }
     }
@@ -275,6 +280,7 @@ internal sealed class SettingsForm : Form
                 + "PrinterDisplayName=" + printerDisplayName.Text.Trim() + "\r\n"
                 + "TemplatePath=" + path + "\r\n"
                 + "PollSeconds=" + seconds.Value + "\r\n"
+                + "MaxPdfPages=" + maxPdfPages.Value + "\r\n"
                 + "PrintMode=" + (outputMode.SelectedIndex == 1 ? "pdf" : "pdfprint") + "\r\n"
                 + "PdfOutputPath=" + pdfFolder.Text.Trim() + "\r\n"
                 + "PdfPrinterExe=" + pdfPrinterExe.Text.Trim() + "\r\n"
