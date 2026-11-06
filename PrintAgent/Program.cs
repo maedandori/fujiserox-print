@@ -23,8 +23,10 @@ internal static class IniConfig
         string Get(string key, string fallback = "") => values.TryGetValue(key, out var v) ? v : fallback;
         if (!int.TryParse(Get("PollSeconds", "3"), out int seconds))
             throw new InvalidDataException("PollSeconds phải là số nguyên.");
+        if (!int.TryParse(Get("MaxPdfPages", "96"), out int maxPdfPages) || maxPdfPages < 1 || maxPdfPages > 100)
+            throw new InvalidDataException("MaxPdfPages phải nằm trong khoảng 1–100 trang.");
         return new AgentConfig { ApiBaseUrl = Get("ApiBaseUrl"), AgentToken = Get("AgentToken"),
-            PrinterName = Get("PrinterName"), TemplatePath = Get("TemplatePath", "template.xlsx"), PollSeconds = seconds,
+            PrinterName = Get("PrinterName"), TemplatePath = Get("TemplatePath", "template.xlsx"), PollSeconds = seconds, MaxPdfPages = maxPdfPages,
             PrintMode = Get("PrintMode", "pdfprint"), PdfOutputPath = Get("PdfOutputPath"), PdfPrinterExe = Get("PdfPrinterExe", "SumatraPDF.exe"), PrinterDisplayName = Get("PrinterDisplayName"), AutoUpdateEnabled = Get("AutoUpdateEnabled","1")!="0" };
     }
 }
@@ -36,6 +38,7 @@ internal sealed class AgentConfig
     public string PrinterDisplayName { get; set; } = "";
     public string TemplatePath { get; set; } = "template.xlsx";
     public int PollSeconds { get; set; } = 3;
+    public int MaxPdfPages { get; set; } = 96;
     public string PrintMode { get; set; } = "pdfprint";
     public string PdfPrinterExe { get; set; } = "SumatraPDF.exe";
     public string PdfOutputPath { get; set; } = "";
@@ -218,9 +221,9 @@ internal static class Program
             throw new InvalidDataException("PrintMode phải là pdfprint hoặc pdf.");
         // Kiểm tra bộ in PDF trước khi xuất để tránh tạo file mà không thể in.
         string? pdfPrinter = mode == "pdfprint" ? ResolvePdfPrinter(config.PdfPrinterExe) : null;
-        // Tối đa 16 trang A4 / PDF (128 thẻ) để giảm kích thước tác vụ của driver.
+        // Tách PDF theo MaxPdfPages trong config.ini (mặc định 96 trang, giới hạn 1–100).
         // Chạy tuần tự, không gửi các PDF cùng lúc. Nếu lỗi giữa chừng KHÔNG tự in lại.
-        const int cardsPerPdf = 128;
+        int cardsPerPdf = checked(config.MaxPdfPages * 8);
         int count = job.Cards?.Count ?? 0;
         int chunks = Math.Max(1, (count + cardsPerPdf - 1) / cardsPerPdf);
         for (int copy = 0; copy < job.Copies; copy++)
