@@ -2,6 +2,25 @@
 
 Máy in: Fuji Xerox DocuCentre-VI C3371 (LAN). Excel: Office 2013. Không cần cài Node.js, .NET SDK hoặc .NET Runtime tại máy sử dụng; GitHub Actions đóng gói self-contained win-x64.
 
+## Quy trình in PDF mới (thay in Excel trực tiếp)
+
+**Print-Agent.exe mới mặc định xuất PDF rồi in PDF**, giữ Excel 2013 để lấy mẫu và điền dữ liệu. Không sử dụng `Workbook.PrintOut` cho lệnh mới. Lệnh được xử lý tuần tự; PDF lớn chia tối đa **16 trang A4 (128 thẻ)** mỗi file trước khi gửi tiếp, tránh tạo hàng đợi in quá nặng. Giữ PDF trong thư mục người dùng chọn để đối chiếu khi có lỗi.
+
+**Máy Windows cần có SumatraPDF** để thực hiện in PDF không mở giao diện. Tải bản từ [sumatrapdfreader.org](https://www.sumatrapdfreader.org/free-pdf-reader), đặt `SumatraPDF.exe` cạnh `Print-Agent.exe` hoặc cài đặt bình thường và chọn đường dẫn file EXE trong Print-Settings. Phần mềm không tự tải SumatraPDF và không thay đổi driver Fuji Xerox hiện có. Nếu không tìm thấy SumatraPDF, Agent trả lỗi rõ ràng, **không chuyển ngược lại in trực tiếp từ Excel**.
+
+Trong **Print-Settings.exe**:
+1. Chọn file `.xlsx` và đúng máy in Windows (hoặc để trống để sử dụng máy in mặc định).
+2. Chọn **Xuất PDF rồi in** (`PrintMode=pdfprint`).
+3. Chọn thư mục **PdfOutputPath** (ví dụ dưới Documents, không bắt buộc ổ C).
+4. Chọn **Bộ in PDF (SumatraPDF)** nếu không nằm cạnh Agent hoặc trong thư mục cài mặc định.
+5. Lưu cấu hình và **khởi động lại Print-Agent** từ khay hệ thống.
+
+Chế độ **Chỉ xuất PDF** (`PrintMode=pdf`) dành cho `--test`; không sử dụng khi nhận job Cloudflare vì chưa thực sự gửi tài liệu vào hàng đợi máy in. INI cũ với `PrintMode=printer` được Agent mới tự hiểu thành `pdfprint` để không tiếp tục in Excel trực tiếp. Muốn ghi lại giá trị mới, mở Print-Settings rồi nhấn Lưu.
+
+Định dạng trạng thái không đổi: `submitted` chỉ xác nhận PDF đã được công cụ in PDF gửi đến **Windows Spooler**, không chứng minh máy in đã ra giấy. Nếu lỗi tại PDF thứ hai trở đi, có thể phần đầu đã in: **không tự thử lại job**, cần đối chiếu trước để tránh trùng phiếu.
+
+> Cần thử nghiệm trên Windows/Excel 2013 và máy in Fuji Xerox C3371 trước khi dùng trong sản xuất: font Nhật, căn lề, dấu `完`, vùng in, tính liên tục số thứ tự và mức tiêu thụ bộ nhớ. Chưa có xác nhận thực tế giấy đã ra khỏi máy.
+
 ## Hai chương trình
 
 - **Print-Settings.exe**: giao diện Windows để nhập URL Machine-Control, Agent Token, tên máy in, đường dẫn template .xlsx và chu kỳ lấy lệnh. Bấm **Lưu cấu hình** tạo/sửa **config.ini** cạnh hai file .exe.
