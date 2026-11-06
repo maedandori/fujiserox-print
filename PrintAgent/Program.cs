@@ -494,6 +494,20 @@ internal static class Program
             throw new InvalidDataException("PdfOutputPath phải là đường dẫn tuyệt đối.");
         folder = Path.GetFullPath(folder);
         Directory.CreateDirectory(folder);
+        // Mỗi lần in dùng duy nhất template.pdf trong thư mục PDF đã cấu hình.
+        // Xóa bản cũ TRƯỚC khi tạo bản mới; nếu đang bị khóa thì báo lỗi và dừng,
+        // tuyệt đối không gửi bản in cũ sang SumatraPDF.
+        var path = Path.Combine(folder, "template.pdf");
+        if (File.Exists(path))
+        {
+            try { File.Delete(path); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                throw new IOException("Không thể xóa template.pdf cũ (có thể đang mở hoặc bị Windows khóa): " + path, ex);
+            }
+        }
+        if (File.Exists(path)) throw new IOException("template.pdf cũ chưa được xóa: " + path);
+        Console.WriteLine("Đã xóa PDF cũ (nếu có), chuẩn bị xuất template.pdf mới: " + path);
         var excelType = Type.GetTypeFromProgID("Excel.Application")
             ?? throw new InvalidOperationException("Không tìm thấy Microsoft Excel (Office 2013).");
         object? excelObject = null, workbookObject = null;
@@ -568,13 +582,18 @@ internal static class Program
                 baseSheet.Delete();
             }
             finally { Release(baseSheetObject); }
-            var safeId = Regex.Replace(job.JobId, @"[^a-zA-Z0-9_-]", "_");
-            var path = Path.Combine(folder, $"MaterialCards_{DateTime.Now:yyyyMMdd_HHmmss_fff}_{safeId}_{Guid.NewGuid():N}.pdf");
             // xlTypePDF=0, xlQualityStandard=0; honor the template's print areas.
+            // Chỉ xuất vào template.pdf đã xóa; không tạo file tên ngẫu nhiên.
             workbook.ExportAsFixedFormat(0, path, 0, true, false);
-            if (!File.Exists(path) || new FileInfo(path).Length == 0)
-                throw new IOException("Excel không tạo được PDF hợp lệ.");
-            Console.WriteLine("Đã xuất PDF: " + path);
+            if (!File.Exists(path) || new FileInfo(path).Length < 6)
+                throw new IOException("Excel không tạo được template.pdf mới.");
+            using (var exported = File.OpenRead(path))
+            {
+                Span<byte> header = stackalloc byte[5];
+                if (exported.Read(header) != 5 || !header.SequenceEqual("%PDF-"u8))
+                    throw new InvalidDataException("template.pdf mới không đúng định dạng PDF; không gửi lệnh in.");
+            }
+            Console.WriteLine("Đã xác minh template.pdf mới, sẵn sàng in: " + path);
             return path;
         }
         finally
