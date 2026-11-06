@@ -18,18 +18,24 @@ internal static class PortablePdf
     {
         if(config.PrintMode.Equals("pdf",StringComparison.OrdinalIgnoreCase))return;
         if(!string.Equals(config.PdfPrinterExe,"SumatraPDF.exe",StringComparison.OrdinalIgnoreCase))return;
+        TryInstall(client,status,cancel,out _);
+    }
+    public static bool Installed => File.Exists(Path.Combine(AppContext.BaseDirectory,"SumatraPDF.exe")) && new FileInfo(Path.Combine(AppContext.BaseDirectory,"SumatraPDF.exe")).Length>1024;
+    public static bool TryInstall(HttpClient client,Action<string> status,CancellationToken cancel,out string? error)
+    {
+        error=null;
         var target=Path.Combine(AppContext.BaseDirectory,"SumatraPDF.exe");
-        if(File.Exists(target)&&new FileInfo(target).Length>1024)return;
+        if(Installed){status("SumatraPDF Portable đã có trên máy.");return true;}
         string? temporary=null;
         try
         {
             using var reply=client.GetAsync("api/print-agent/update/latest",cancel).GetAwaiter().GetResult();
-            if(!reply.IsSuccessStatusCode)return;
+            if(!reply.IsSuccessStatusCode)throw new IOException("Không lấy được manifest SumatraPDF HTTP "+(int)reply.StatusCode);
             var manifest=JsonSerializer.Deserialize<Manifest>(reply.Content.ReadAsStringAsync(cancel).GetAwaiter().GetResult(),new JsonSerializerOptions{PropertyNameCaseInsensitive=true});
             if(manifest==null||manifest.SumatraSize<1024||manifest.SumatraSize>40*1024*1024||
                string.IsNullOrWhiteSpace(manifest.SumatraSha256)||manifest.SumatraSha256.Length!=64||
                !System.Text.RegularExpressions.Regex.IsMatch(manifest.SumatraSha256,"^[0-9a-f]{64}$",System.Text.RegularExpressions.RegexOptions.IgnoreCase))
-                return; // Release cũ, không có SumatraPDF.
+                throw new InvalidDataException("GitHub Release chưa cung cấp SumatraPDF hợp lệ.");
             status("Đang tải SumatraPDF Portable từ gói phát hành đã xác minh...");
             temporary=target+"."+Guid.NewGuid().ToString("N")+".download";
             using(var response=client.GetAsync("api/print-agent/update/sumatra",HttpCompletionOption.ResponseHeadersRead,cancel).GetAwaiter().GetResult())
@@ -54,9 +60,10 @@ internal static class PortablePdf
             }
             // Không được ghi đè bộ in Portable đã được quản trị viên cài thủ công.
             if(!File.Exists(target))File.Move(temporary,target);
-            status("Đã có SumatraPDF Portable; không cần cài phần mềm.");
+            status("SumatraPDF Portable tải và xác minh thành công.");
+            return Installed;
         }
-        catch(Exception e) {status("Không tự tải được SumatraPDF: "+e.Message);}
+        catch(Exception e) {error=e.Message;status("Không tự tải được SumatraPDF: "+e.Message);return false;}
         finally {if(temporary!=null)try{File.Delete(temporary);}catch{}}
     }
 }
