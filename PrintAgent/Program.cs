@@ -120,6 +120,7 @@ internal static class Program
             var nextRemoteUpdateCheck = DateTime.UtcNow;
             var nextConfigCheck = DateTime.UtcNow;
             var nextPdfToolCheck = DateTime.UtcNow;
+            var nextRemotePdfInstallCheck = DateTime.UtcNow;
             while (!cancel.IsCancellationRequested)
             {
                 if (DateTime.UtcNow - lastHeartbeat >= TimeSpan.FromSeconds(60))
@@ -127,6 +128,10 @@ internal static class Program
                     lastHeartbeat = DateTime.UtcNow;
                     try { PrinterHeartbeat.Send(client, config, agentId); }
                     catch (Exception ex) { Console.Error.WriteLine("Không gửi được trạng thái máy in: " + ex.Message); }
+                    try {
+                        using var pdfState=client.PostAsJsonAsync("api/print-agent/pdf-tool/status",new {installed=PortablePdf.Installed}).GetAwaiter().GetResult();
+                        if(!pdfState.IsSuccessStatusCode)Console.Error.WriteLine("Không gửi được trạng thái SumatraPDF HTTP "+(int)pdfState.StatusCode);
+                    } catch(Exception e) {Console.Error.WriteLine("Không gửi được trạng thái SumatraPDF: "+e.Message);}
                 }
                 try
                 {
@@ -138,6 +143,27 @@ internal static class Program
                         {
                             nextUpdateCheck = DateTime.UtcNow.AddHours(6);
                             if(AutoUpdate.TryStage(client,status,cancel))return 0;
+                        }
+                        // Lệnh Admin tải SumatraPDF: chạy khi không in, không chiếm phiên Excel.
+                        if(DateTime.UtcNow>=nextRemotePdfInstallCheck)
+                        {
+                            nextRemotePdfInstallCheck=DateTime.UtcNow.AddSeconds(15);
+                            try {
+                                using var toolReply=client.GetAsync("api/print-agent/pdf-tool/command").GetAwaiter().GetResult();
+                                if(toolReply.IsSuccessStatusCode) {
+                                    using var body=JsonDocument.Parse(toolReply.Content.ReadAsStringAsync().GetAwaiter().GetResult());
+                                    if(body.RootElement.TryGetProperty("install",out var flag)&&flag.ValueKind==JsonValueKind.True) {
+                                        var revision=body.RootElement.GetProperty("revision").GetString();
+                                        if(Guid.TryParse(revision,out _)) {
+                                            bool installed=PortablePdf.TryInstall(client,status,cancel,out var issue);
+                                            try {
+                                                using var report=client.PostAsJsonAsync("api/print-agent/pdf-tool/result",new{revision,status=installed?"completed":"failed",error=issue}).GetAwaiter().GetResult();
+                                                if(!report.IsSuccessStatusCode)Console.Error.WriteLine("Không báo được kết quả tải SumatraPDF HTTP "+(int)report.StatusCode);
+                                            }catch(Exception reportError){Console.Error.WriteLine("Không báo được kết quả tải SumatraPDF: "+reportError.Message);}
+                                        }
+                                    }
+                                }
+                            }catch(Exception installError){Console.Error.WriteLine("Không kiểm tra được yêu cầu tải SumatraPDF: "+installError.Message);}
                         }
                         // Bản PDF Portable chỉ tải khi không xử lý lệnh in.
                         if(DateTime.UtcNow>=nextPdfToolCheck)
