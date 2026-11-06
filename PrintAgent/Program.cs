@@ -119,6 +119,7 @@ internal static class Program
             var nextUpdateCheck = DateTime.UtcNow;
             var nextRemoteUpdateCheck = DateTime.UtcNow;
             var nextConfigCheck = DateTime.UtcNow;
+            var nextPdfToolCheck = DateTime.UtcNow;
             while (!cancel.IsCancellationRequested)
             {
                 if (DateTime.UtcNow - lastHeartbeat >= TimeSpan.FromSeconds(60))
@@ -137,6 +138,12 @@ internal static class Program
                         {
                             nextUpdateCheck = DateTime.UtcNow.AddHours(6);
                             if(AutoUpdate.TryStage(client,status,cancel))return 0;
+                        }
+                        // Bản PDF Portable chỉ tải khi không xử lý lệnh in.
+                        if(DateTime.UtcNow>=nextPdfToolCheck)
+                        {
+                            nextPdfToolCheck=DateTime.UtcNow.AddHours(6);
+                            PortablePdf.Ensure(client,config,status,cancel);
                         }
                         // Lệnh cấu hình chỉ áp dụng lúc Agent rảnh; giữ lại token và URL cục bộ.
                         if(DateTime.UtcNow >= nextConfigCheck)
