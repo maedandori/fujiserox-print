@@ -170,7 +170,8 @@ internal static class Program
                     try
                     {
                         ProcessPrintJob(config, job);
-                        Report(client, job.JobId, "submitted", null);
+                        var pdfOnly = config.PrintMode.Trim().Equals("pdf", StringComparison.OrdinalIgnoreCase);
+                        Report(client, job.JobId, pdfOnly ? "pdf_saved" : "submitted", null);
                         status((config.PrintMode.Equals("pdf", StringComparison.OrdinalIgnoreCase) ? "Đã tạo PDF: " : "Đã gửi PDF vào hàng đợi Windows: ") + job.JobId);
                         Console.WriteLine(config.PrintMode.Equals("pdf", StringComparison.OrdinalIgnoreCase)
                             ? $"Đã xuất PDF từ lệnh: {job.JobId}" : $"Đã gửi đến hàng đợi in Windows: {job.JobId}");
@@ -253,9 +254,7 @@ internal static class Program
         if (!File.Exists(template) || !template.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
             throw new FileNotFoundException("Không tìm thấy template XLSX: " + template);
         var mode = config.PrintMode.Trim().ToLowerInvariant();
-        // Chế độ chỉ tạo PDF dành cho --test; job Cloudflare không được báo là "đã in".
-        if (mode == "pdf" && !Environment.GetCommandLineArgs().Contains("--test", StringComparer.OrdinalIgnoreCase))
-            throw new InvalidOperationException("PrintMode=pdf chỉ xuất file, không in. Chọn 'Xuất PDF rồi in' trong Print-Settings để nhận job Cloudflare.");
+        // Chế độ pdf chỉ lưu PDF, không gửi máy in; lệnh từ web được phép và báo pdf_saved.
         if (mode == "printer")
         {
             // Tự chuyển cấu hình INI cũ từ in Excel trực tiếp sang quy trình PDF.
