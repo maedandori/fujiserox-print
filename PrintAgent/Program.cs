@@ -1,4 +1,6 @@
 using System.Net;
+using System.Diagnostics;
+using System.Drawing.Printing;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Runtime.InteropServices;
@@ -23,7 +25,7 @@ internal static class IniConfig
             throw new InvalidDataException("PollSeconds phải là số nguyên.");
         return new AgentConfig { ApiBaseUrl = Get("ApiBaseUrl"), AgentToken = Get("AgentToken"),
             PrinterName = Get("PrinterName"), TemplatePath = Get("TemplatePath", "template.xlsx"), PollSeconds = seconds,
-            PrintMode = Get("PrintMode", "printer"), PdfOutputPath = Get("PdfOutputPath"), PrinterDisplayName = Get("PrinterDisplayName"), AutoUpdateEnabled = Get("AutoUpdateEnabled","1")!="0" };
+            PrintMode = Get("PrintMode", "pdfprint"), PdfOutputPath = Get("PdfOutputPath"), PdfPrinterExe = Get("PdfPrinterExe", "SumatraPDF.exe"), PrinterDisplayName = Get("PrinterDisplayName"), AutoUpdateEnabled = Get("AutoUpdateEnabled","1")!="0" };
     }
 }
 internal sealed class AgentConfig
@@ -34,7 +36,8 @@ internal sealed class AgentConfig
     public string PrinterDisplayName { get; set; } = "";
     public string TemplatePath { get; set; } = "template.xlsx";
     public int PollSeconds { get; set; } = 3;
-    public string PrintMode { get; set; } = "printer";
+    public string PrintMode { get; set; } = "pdfprint";
+    public string PdfPrinterExe { get; set; } = "SumatraPDF.exe";
     public string PdfOutputPath { get; set; } = "";
     public bool AutoUpdateEnabled { get; set; } = true;
 }
@@ -88,8 +91,8 @@ internal static class Program
             {
                 var testPath = Path.Combine(Root, "sample-job.json");
                 var job = ReadJob(File.ReadAllText(testPath));
-                PrintExcel(config, job);
-                Console.WriteLine(config.PrintMode.Equals("pdf", StringComparison.OrdinalIgnoreCase) ? "Đã tạo file PDF thử." : "Đã gửi bản in thử đến Windows Print Spooler.");
+                ProcessPrintJob(config, job);
+                Console.WriteLine(config.PrintMode.Equals("pdf", StringComparison.OrdinalIgnoreCase) ? "Đã tạo file PDF thử." : "Đã gửi PDF thử tới Windows Print Spooler.");
                 return 0;
             }
             if (string.IsNullOrWhiteSpace(config.ApiBaseUrl) || string.IsNullOrWhiteSpace(config.AgentToken))
@@ -138,9 +141,9 @@ internal static class Program
                     Console.WriteLine($"Nhận yêu cầu in: {job.JobId}");
                     try
                     {
-                        PrintExcel(config, job);
+                        ProcessPrintJob(config, job);
                         Report(client, job.JobId, "submitted", null);
-                        status((config.PrintMode.Equals("pdf", StringComparison.OrdinalIgnoreCase) ? "Đã tạo PDF: " : "Đã gửi in: ") + job.JobId);
+                        status((config.PrintMode.Equals("pdf", StringComparison.OrdinalIgnoreCase) ? "Đã tạo PDF: " : "Đã gửi PDF vào hàng đợi Windows: ") + job.JobId);
                         Console.WriteLine(config.PrintMode.Equals("pdf", StringComparison.OrdinalIgnoreCase)
                             ? $"Đã xuất PDF từ lệnh: {job.JobId}" : $"Đã gửi đến hàng đợi in Windows: {job.JobId}");
                     }
@@ -194,7 +197,73 @@ internal static class Program
         }
     }
 
-    private static void PrintExcel(AgentConfig config, PrintJob job)
+    private static void ProcessPrintJob(AgentConfig config, PrintJob job)
+    {
+        // Mặc định mới: điền XLSX -> xuất PDF -> in PDF; không gọi Excel.PrintOut.
+        var template = Path.IsPathRooted(config.TemplatePath) ? config.TemplatePath : Path.Combine(Root, config.TemplatePath);
+        template = Path.GetFullPath(template);
+        if (!File.Exists(template) || !template.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+            throw new FileNotFoundException("Không tìm thấy template XLSX: " + template);
+        var mode = config.PrintMode.Trim().ToLowerInvariant();
+        if (mode == "printer")
+        {
+            // Tự chuyển cấu hình INI cũ từ in Excel trực tiếp sang quy trình PDF.
+            Console.WriteLine("Đã chuyển PrintMode=printer cũ sang xuất PDF rồi in PDF.");
+            mode = "pdfprint";
+        }
+        if (mode != "pdf" && mode != "pdfprint")
+            throw new InvalidDataException("PrintMode phải là pdfprint hoặc pdf.");
+        // Kiểm tra bộ in PDF trước khi xuất để tránh tạo file mà không thể in.
+        string? pdfPrinter = mode == "pdfprint" ? ResolvePdfPrinter(config.PdfPrinterExe) : null;
+        var pdfPath = ExportPdf(config, job, template);
+        if (mode == "pdfprint") PrintPdf(pdfPrinter!, config.PrinterName, pdfPath);
+    }
+
+    private static string ResolvePdfPrinter(string configured)
+    {
+        if (string.IsNullOrWhiteSpace(configured)) configured = "SumatraPDF.exe";
+        string[] candidates = Path.IsPathRooted(configured)
+            ? new[] { configured }
+            : new[] {
+                Path.Combine(Root, configured),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "SumatraPDF", configured),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "SumatraPDF", configured),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SumatraPDF", configured)
+            };
+        foreach (var candidate in candidates)
+            if (File.Exists(candidate) && candidate.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                return Path.GetFullPath(candidate);
+        throw new FileNotFoundException("Không tìm thấy SumatraPDF.exe. Chọn đường dẫn EXE trong Print-Settings hoặc đặt SumatraPDF.exe cạnh Print-Agent.exe.");
+    }
+
+    private static void PrintPdf(string executable, string printerName, string pdfPath)
+    {
+        if (!File.Exists(pdfPath) || new FileInfo(pdfPath).Length < 5)
+            throw new IOException("File PDF vừa xuất không hợp lệ: " + pdfPath);
+        using var file = File.OpenRead(pdfPath);
+        Span<byte> signature = stackalloc byte[5];
+        if (file.Read(signature) != 5 || !signature.SequenceEqual("%PDF-"u8))
+            throw new InvalidDataException("File xuất không có định dạng PDF.");
+        file.Close();
+        var start = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = Root };
+        if (string.IsNullOrWhiteSpace(printerName)) start.ArgumentList.Add("-print-to-default");
+        else { start.ArgumentList.Add("-print-to"); start.ArgumentList.Add(printerName); }
+        start.ArgumentList.Add("-print-settings");
+        start.ArgumentList.Add("noscale,simplex");
+        start.ArgumentList.Add("-silent");
+        start.ArgumentList.Add(pdfPath);
+        using var process = Process.Start(start) ?? throw new InvalidOperationException("Không thể mở bộ in PDF.");
+        if (!process.WaitForExit(120000))
+        {
+            try { process.Kill(entireProcessTree: true); } catch { }
+            throw new TimeoutException("Bộ in PDF quá thời gian 120 giây. Hãy đối chiếu hàng đợi in Windows trước khi thử lại để tránh trùng.");
+        }
+        if (process.ExitCode != 0)
+            throw new IOException("Bộ in PDF trả mã lỗi " + process.ExitCode + ". Kiểm tra tên máy in, driver và hàng đợi Windows; không tự in lại.");
+        Console.WriteLine("Đã gửi PDF tới Windows Print Spooler: " + pdfPath);
+    }
+
+    private static void PrintExcelLegacy(AgentConfig config, PrintJob job)
     {
         var template = Path.IsPathRooted(config.TemplatePath) ? config.TemplatePath : Path.Combine(Root, config.TemplatePath);
         template = Path.GetFullPath(template);
@@ -301,7 +370,7 @@ internal static class Program
         }
     }
 
-    private static void ExportPdf(AgentConfig config, PrintJob job, string template)
+    private static string ExportPdf(AgentConfig config, PrintJob job, string template)
     {
         var folder = config.PdfOutputPath;
         if (string.IsNullOrWhiteSpace(folder))
@@ -391,6 +460,7 @@ internal static class Program
             if (!File.Exists(path) || new FileInfo(path).Length == 0)
                 throw new IOException("Excel không tạo được PDF hợp lệ.");
             Console.WriteLine("Đã xuất PDF: " + path);
+            return path;
         }
         finally
         {
