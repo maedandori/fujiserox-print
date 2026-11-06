@@ -114,6 +114,7 @@ internal static class Program
             status("Đang kết nối với Machine-Control");
             var lastHeartbeat = DateTime.MinValue;
             var nextUpdateCheck = DateTime.UtcNow;
+            var nextRemoteUpdateCheck = DateTime.UtcNow;
             while (!cancel.IsCancellationRequested)
             {
                 if (DateTime.UtcNow - lastHeartbeat >= TimeSpan.FromSeconds(60))
@@ -132,6 +133,28 @@ internal static class Program
                         {
                             nextUpdateCheck = DateTime.UtcNow.AddHours(6);
                             if(AutoUpdate.TryStage(client,status,cancel))return 0;
+                        }
+                        // Lệnh Admin chỉ xử lý khi hàng đợi in trống; kiểm tra tối đa 30 giây/lần.
+                        if (DateTime.UtcNow >= nextRemoteUpdateCheck)
+                        {
+                            nextRemoteUpdateCheck = DateTime.UtcNow.AddSeconds(30);
+                            try
+                            {
+                                using var commandResponse=client.GetAsync("api/print-agent/update/command").GetAwaiter().GetResult();
+                                if(commandResponse.IsSuccessStatusCode)
+                                {
+                                    using var commandJson=JsonDocument.Parse(commandResponse.Content.ReadAsStringAsync().GetAwaiter().GetResult());
+                                    if(commandJson.RootElement.TryGetProperty("update",out var needed)&&needed.ValueKind==JsonValueKind.True)
+                                    {
+                                        status("Admin yêu cầu cập nhật Print Agent...");
+                                        var started=AutoUpdate.TryStage(client,status,cancel);
+                                        ReportRemoteUpdate(client,started?"applying":"failed",started?null:"Không thể cập nhật. Kiểm tra log Agent và GitHub Release.");
+                                        if(started)return 0;
+                                    }
+                                }
+                                else Console.Error.WriteLine("Không kiểm tra được lệnh cập nhật web HTTP "+(int)commandResponse.StatusCode);
+                            }
+                            catch(Exception ex){Console.Error.WriteLine("Lỗi kiểm tra cập nhật từ Admin: "+ex.Message);}
                         }
                         status("Đã kết nối - chờ lệnh in (v"+AutoUpdate.Version+")");
                         if (cancel.WaitHandle.WaitOne(TimeSpan.FromSeconds(config.PollSeconds))) break;
@@ -172,6 +195,16 @@ internal static class Program
             Console.Error.WriteLine("Lỗi cấu hình: " + error.Message);
             return 1;
         }
+    }
+
+    private static void ReportRemoteUpdate(HttpClient client,string state,string? error)
+    {
+        try
+        {
+            using var result=client.PostAsJsonAsync("api/print-agent/update/command/result",new {status=state,error}).GetAwaiter().GetResult();
+            result.EnsureSuccessStatusCode();
+        }
+        catch(Exception ex){Console.Error.WriteLine("Không báo được trạng thái cập nhật: "+ex.Message);}
     }
 
     private static PrintJob ReadJob(string json)
