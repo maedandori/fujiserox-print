@@ -2,6 +2,12 @@
 
 Máy in: Fuji Xerox DocuCentre-VI C3371 (LAN). Excel: Office 2013. Không cần cài Node.js, .NET SDK hoặc .NET Runtime tại máy sử dụng; GitHub Actions đóng gói self-contained win-x64.
 
+## Cài đặt giới hạn số trang PDF
+
+Trong **Print-Settings.exe**, trường **Số trang tối đa mỗi PDF / PDFごとの最大ページ数** cho phép nhập **1–100 trang**, mặc định **96 trang**. Giá trị lưu trong `config.ini` dưới khóa `MaxPdfPages=96`. Nếu INI cũ chưa có khóa này, Print Agent mới tự sử dụng 96 trang. Sau khi sửa giá trị, hãy **Lưu cấu hình và khởi động lại Print Agent**; không cần build lại ứng dụng.
+
+Mỗi trang có tối đa 8 thẻ, ví dụ `MaxPdfPages=96` tương ứng tối đa 768 thẻ/PDF. Lệnh có 800 thẻ sẽ được chia thành PDF 96 trang và PDF 4 trang, gửi lần lượt. Nếu dùng mức 100, một lệnh 800 thẻ sẽ xuất một PDF 100 trang. Giới hạn trang không bảo đảm tránh thiếu RAM tuyệt đối; cần đối chiếu dữ liệu thực tế và điều chỉnh theo máy in.
+
 ## Quy trình in PDF mới (thay in Excel trực tiếp)
 
 **Print-Agent.exe mới mặc định xuất PDF rồi in PDF**, giữ Excel 2013 để lấy mẫu và điền dữ liệu. Không sử dụng `Workbook.PrintOut` cho lệnh mới. Lệnh được xử lý tuần tự; PDF lớn chia tối đa **16 trang A4 (128 thẻ)** mỗi file trước khi gửi tiếp, tránh tạo hàng đợi in quá nặng. Giữ PDF trong thư mục người dùng chọn để đối chiếu khi có lỗi.
