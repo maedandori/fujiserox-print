@@ -43,6 +43,7 @@ internal sealed class PrintCard
     public string Name { get; set; } = "";
     public string Color { get; set; } = "";
     public string Quantity { get; set; } = "";
+    public bool IsFinal { get; set; } = false;
 }
 internal sealed class PrintJob
 {
@@ -171,7 +172,7 @@ internal static class Program
     {
         var job = JsonSerializer.Deserialize<PrintJob>(json, JsonOptions)
             ?? throw new InvalidDataException("Dữ liệu lệnh in trống.");
-        if (string.IsNullOrWhiteSpace(job.JobId) || job.JobId.Length > 128 || job.Copies < 1 || job.Copies > 10 ||
+        if (string.IsNullOrWhiteSpace(job.JobId) || job.JobId.Length > 128 || job.Copies < 1 || job.Copies > 100 ||
             job.Cells is null || job.Cells.Count > 100 || job.StartNumber < 1 || job.StartNumber > 1000000 || (job.Cards?.Count ?? 0) > 800)
             throw new InvalidDataException("JobId, Copies hoặc Cells không hợp lệ.");
         return job;
@@ -244,7 +245,7 @@ internal static class Program
                             pageCells["原紙!" + colors[i]] = card?.Color ?? "";
                             pageCells["原紙!" + quantities[i]] = card?.Quantity ?? "";
                             pageCells["原紙!" + numbers[i]] =
-                                card is null ? "" : checked(job.StartNumber + cardIndex).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                                card is null ? "" : (checked(job.StartNumber + cardIndex).ToString(System.Globalization.CultureInfo.InvariantCulture) + (card?.IsFinal == true ? "(完)" : ""));
                         }
                     }
                     foreach (var (location, value) in pageCells)
@@ -359,7 +360,7 @@ internal static class Program
                                     SetPdfCell(sheet, colors[i], card?.Color ?? "");
                                     SetPdfCell(sheet, quantities[i], card?.Quantity ?? "");
                                     SetPdfCell(sheet, numbers[i],
-                                        card is null ? "" : checked(job.StartNumber + cardIndex).ToString(System.Globalization.CultureInfo.InvariantCulture));
+                                        card is null ? "" : (checked(job.StartNumber + cardIndex).ToString(System.Globalization.CultureInfo.InvariantCulture) + (card?.IsFinal == true ? "(完)" : "")));
                                 }
                             }
                             foreach (var (location, value) in job.Cells)
