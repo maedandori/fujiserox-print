@@ -205,6 +205,9 @@ internal static class Program
         if (!File.Exists(template) || !template.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
             throw new FileNotFoundException("Không tìm thấy template XLSX: " + template);
         var mode = config.PrintMode.Trim().ToLowerInvariant();
+        // Chế độ chỉ tạo PDF dành cho --test; job Cloudflare không được báo là "đã in".
+        if (mode == "pdf" && !Environment.GetCommandLineArgs().Contains("--test", StringComparer.OrdinalIgnoreCase))
+            throw new InvalidOperationException("PrintMode=pdf chỉ xuất file, không in. Chọn 'Xuất PDF rồi in' trong Print-Settings để nhận job Cloudflare.");
         if (mode == "printer")
         {
             // Tự chuyển cấu hình INI cũ từ in Excel trực tiếp sang quy trình PDF.
@@ -215,8 +218,32 @@ internal static class Program
             throw new InvalidDataException("PrintMode phải là pdfprint hoặc pdf.");
         // Kiểm tra bộ in PDF trước khi xuất để tránh tạo file mà không thể in.
         string? pdfPrinter = mode == "pdfprint" ? ResolvePdfPrinter(config.PdfPrinterExe) : null;
-        var pdfPath = ExportPdf(config, job, template);
-        if (mode == "pdfprint") PrintPdf(pdfPrinter!, config.PrinterName, pdfPath);
+        // Tối đa 16 trang A4 / PDF (128 thẻ) để giảm kích thước tác vụ của driver.
+        // Chạy tuần tự, không gửi các PDF cùng lúc. Nếu lỗi giữa chừng KHÔNG tự in lại.
+        const int cardsPerPdf = 128;
+        int count = job.Cards?.Count ?? 0;
+        int chunks = Math.Max(1, (count + cardsPerPdf - 1) / cardsPerPdf);
+        for (int copy = 0; copy < job.Copies; copy++)
+        {
+            for (int chunk = 0; chunk < chunks; chunk++)
+            {
+                int offset = chunk * cardsPerPdf;
+                var part = new PrintJob
+                {
+                    JobId = job.JobId + "_part_" + (chunk + 1) + "_copy_" + (copy + 1),
+                    Copies = 1,
+                    Cards = count == 0 ? null : job.Cards!.GetRange(offset, Math.Min(cardsPerPdf, count - offset)),
+                    StartNumber = checked(job.StartNumber + offset),
+                    Cells = job.Cells
+                };
+                var pdfPath = ExportPdf(config, part, template);
+                if (mode == "pdfprint")
+                {
+                    PrintPdf(pdfPrinter!, config.PrinterName, pdfPath);
+                    Console.WriteLine($"Đã gửi PDF {chunk + 1}/{chunks} (bản {copy + 1}/{job.Copies}) vào Windows Spooler.");
+                }
+            }
+        }
     }
 
     private static string ResolvePdfPrinter(string configured)
