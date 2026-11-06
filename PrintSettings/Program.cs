@@ -26,6 +26,7 @@ internal sealed class SettingsForm : Form
     private readonly NumericUpDown seconds = new();
     private readonly ComboBox outputMode = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly TextBox pdfFolder = new();
+    private readonly TextBox pdfPrinterExe = new() { Text = "SumatraPDF.exe" };
     private readonly TextBox printerDisplayName = new();
     private readonly CheckBox autoUpdate = new() { Text = "Tự động cập nhật khi Agent không in", AutoSize = true, Checked = true };
     private readonly CheckBox startWithWindows = new() { Text = "Khởi động Print-Agent cùng Windows (khi đăng nhập)", AutoSize = true };
@@ -47,7 +48,9 @@ internal sealed class SettingsForm : Form
         ["Lưu cấu hình"]="設定を保存",
         ["Đóng"]="閉じる",
         ["Lưu config.ini cùng thư mục với hai ứng dụng. Agent cần chạy khi người dùng Windows đang đăng nhập và Excel 2013 đã được cài."]="設定はEXEと同じフォルダーに保存します。Windowsにサインインし、Excel 2013が必要です。",
-        ["In ra máy in"]="プリンターに印刷",
+        ["Xuất PDF rồi in"]="PDFを作成して印刷",
+        ["Bộ in PDF (SumatraPDF)"]="PDF印刷ツール (SumatraPDF)",
+        ["Chọn EXE..."]="EXEを選択...",
         ["Xuất PDF tự động"]="PDFを自動保存",
         ["(Máy in mặc định Windows)"]="（Windowsの既定プリンター）"
     };
@@ -67,7 +70,7 @@ internal sealed class SettingsForm : Form
         Translate(this);
         var mode=outputMode.SelectedIndex;
         outputMode.Items.Clear();
-        outputMode.Items.AddRange(new object[]{UiLanguage.T("In ra máy in","プリンターに印刷"),UiLanguage.T("Xuất PDF tự động","PDFを自動保存")});
+        outputMode.Items.AddRange(new object[]{UiLanguage.T("Xuất PDF rồi in","PDFを作成して印刷"),UiLanguage.T("Xuất PDF tự động","PDFを自動保存")});
         outputMode.SelectedIndex=mode<0?0:mode;
         var chosen=printer.SelectedIndex>0?printer.Text:"";
         RefreshPrinters(chosen);
@@ -79,17 +82,17 @@ internal sealed class SettingsForm : Form
     {
         Text = "Machine-Control - Cài đặt máy in (v"+(typeof(Program).Assembly.GetName().Version?.ToString(3)??"1.0.0")+")";
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(690, 625);
-        Size = new Size(800, 700);
+        MinimumSize = new Size(690, 680);
+        Size = new Size(800, 755);
         Font = new Font("Segoe UI", 10);
         var grid = new TableLayoutPanel {
-            Dock = DockStyle.Fill, Padding = new Padding(16), ColumnCount = 3, RowCount = 12,
+            Dock = DockStyle.Fill, Padding = new Padding(16), ColumnCount = 3, RowCount = 13,
             AutoSize = false
         };
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
-        for (int i = 0; i < 11; i++) grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 47));
+        for (int i = 0; i < 12; i++) grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 47));
         grid.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         url.Dock = token.Dock = printer.Dock = template.Dock = DockStyle.Fill;
@@ -119,7 +122,7 @@ internal sealed class SettingsForm : Form
         grid.Controls.Add(browse, 2, 4);
         AddLabel(grid, "Chu kỳ kiểm tra (giây)", 5); grid.Controls.Add(seconds, 1, 5);
         AddLabel(grid, "Chế độ xuất", 6);
-        outputMode.Items.AddRange(new object[] { "In ra máy in", "Xuất PDF tự động" });
+        outputMode.Items.AddRange(new object[] { "Xuất PDF rồi in", "Xuất PDF tự động" });
         outputMode.SelectedIndex = 0;
         outputMode.Dock = DockStyle.Fill;
         outputMode.SelectedIndexChanged += (_, _) => UpdatePdfInputs();
@@ -136,10 +139,20 @@ internal sealed class SettingsForm : Form
             if (folder.ShowDialog(this) == DialogResult.OK) pdfFolder.Text = folder.SelectedPath;
         };
         grid.Controls.Add(browsePdf, 2, 7);
+        AddLabel(grid, "Bộ in PDF (SumatraPDF)", 8);
+        pdfPrinterExe.Dock = DockStyle.Fill;
+        grid.Controls.Add(pdfPrinterExe, 1, 8);
+        var choosePdfPrinter = new Button { Text = "Chọn EXE...", Dock = DockStyle.Fill };
+        choosePdfPrinter.Click += (_, _) => {
+            using var dialog = new OpenFileDialog { Filter = "Executable (*.exe)|*.exe", CheckFileExists = true,
+                Title = UiLanguage.T("Chọn SumatraPDF.exe","SumatraPDF.exeを選択") };
+            if (dialog.ShowDialog(this) == DialogResult.OK) pdfPrinterExe.Text = dialog.FileName;
+        };
+        grid.Controls.Add(choosePdfPrinter, 2, 8);
         var note = new Label { Text = "Lưu config.ini cùng thư mục với hai ứng dụng. Agent cần chạy khi người dùng Windows đang đăng nhập và Excel 2013 đã được cài.", AutoSize = true, Dock = DockStyle.Fill };
-        grid.Controls.Add(autoUpdate, 0, 8); grid.SetColumnSpan(autoUpdate, 3);
-        grid.Controls.Add(startWithWindows, 0, 9); grid.SetColumnSpan(startWithWindows, 3);
-        grid.Controls.Add(note, 0, 10); grid.SetColumnSpan(note, 3);
+        grid.Controls.Add(autoUpdate, 0, 9); grid.SetColumnSpan(autoUpdate, 3);
+        grid.Controls.Add(startWithWindows, 0, 10); grid.SetColumnSpan(startWithWindows, 3);
+        grid.Controls.Add(note, 0, 11); grid.SetColumnSpan(note, 3);
         var controls = new FlowLayoutPanel { FlowDirection = FlowDirection.RightToLeft, Dock = DockStyle.Fill };
         var save = new Button { Text = "Lưu cấu hình", AutoSize = true, Height = 36 };
         var close = new Button { Text = "Đóng", AutoSize = true, Height = 36 };
@@ -147,7 +160,7 @@ internal sealed class SettingsForm : Form
         close.Click += (_, _) => Close();
         languageButton.Click += (_,_) => { if (UiLanguage.Set(UiLanguage.Current=="ja"?"vi":"ja")) ApplyLanguage(); else MessageBox.Show(L("Không lưu được ngôn ngữ.","言語設定を保存できません。")); };
         controls.Controls.Add(save); controls.Controls.Add(close); controls.Controls.Add(languageButton);
-        grid.Controls.Add(controls, 0, 11); grid.SetColumnSpan(controls, 3);
+        grid.Controls.Add(controls, 0, 12); grid.SetColumnSpan(controls, 3);
         Controls.Add(grid);
         AcceptButton = save;
         RefreshPrinters("");
@@ -181,10 +194,13 @@ internal sealed class SettingsForm : Form
 
     private void UpdatePdfInputs()
     {
-        bool isPdf = outputMode.SelectedIndex == 1;
+        bool isPdf = true;
         pdfFolder.Enabled = isPdf;
+        pdfPrinterExe.Enabled = outputMode.SelectedIndex == 0;
         foreach (Control control in Controls[0].Controls)
             if (control is Button button && (button.Tag as string ?? button.Text) == "Chọn thư mục...") button.Enabled = isPdf;
+        foreach (Control control in Controls[0].Controls)
+            if (control is Button button && (button.Tag as string ?? button.Text) == "Chọn EXE...") button.Enabled = outputMode.SelectedIndex == 0;
     }
 
     private void LoadConfig()
@@ -204,6 +220,7 @@ internal sealed class SettingsForm : Form
                 case "autoupdateenabled": autoUpdate.Checked = value != "0"; break;
                 case "templatepath": template.Text = value; break;
                 case "printmode": outputMode.SelectedIndex = value.Equals("pdf", StringComparison.OrdinalIgnoreCase) ? 1 : 0; break;
+                case "pdfprinterexe": if (!string.IsNullOrWhiteSpace(value)) pdfPrinterExe.Text = value; break;
                 case "pdfoutputpath": if (!string.IsNullOrWhiteSpace(value)) pdfFolder.Text = value; break;
                 case "pollseconds": if (int.TryParse(value, out int n)) seconds.Value = Math.Clamp(n, 2, 300); break;
             }
@@ -242,9 +259,11 @@ internal sealed class SettingsForm : Form
             var path = template.Text.Trim();
             if (path.Length == 0 || !path.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("Hãy chọn file mẫu .xlsx.");
-            if (outputMode.SelectedIndex == 1 && (string.IsNullOrWhiteSpace(pdfFolder.Text) || !Path.IsPathFullyQualified(pdfFolder.Text.Trim())))
+            if (string.IsNullOrWhiteSpace(pdfFolder.Text) || !Path.IsPathFullyQualified(pdfFolder.Text.Trim()))
                 throw new InvalidOperationException("Thư mục lưu PDF phải là đường dẫn tuyệt đối.");
-            if (new[] { api, token.Text, printer.Text, printerDisplayName.Text, path, pdfFolder.Text }.Any(x => x.Contains('\r') || x.Contains('\n')))
+            if (outputMode.SelectedIndex == 0 && !pdfPrinterExe.Text.Trim().EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Hãy chọn SumatraPDF.exe để in PDF.");
+            if (new[] { api, token.Text, printer.Text, printerDisplayName.Text, path, pdfFolder.Text, pdfPrinterExe.Text }.Any(x => x.Contains('\r') || x.Contains('\n')))
                 throw new InvalidOperationException("Giá trị cấu hình không được chứa ký tự xuống dòng.");
             var selectedPrinter = printer.SelectedIndex <= 0 ? "" : printer.Text;
             if (selectedPrinter.EndsWith(" (không tìm thấy)", StringComparison.Ordinal))
@@ -256,8 +275,9 @@ internal sealed class SettingsForm : Form
                 + "PrinterDisplayName=" + printerDisplayName.Text.Trim() + "\r\n"
                 + "TemplatePath=" + path + "\r\n"
                 + "PollSeconds=" + seconds.Value + "\r\n"
-                + "PrintMode=" + (outputMode.SelectedIndex == 1 ? "pdf" : "printer") + "\r\n"
+                + "PrintMode=" + (outputMode.SelectedIndex == 1 ? "pdf" : "pdfprint") + "\r\n"
                 + "PdfOutputPath=" + pdfFolder.Text.Trim() + "\r\n"
+                + "PdfPrinterExe=" + pdfPrinterExe.Text.Trim() + "\r\n"
                 + "AutoUpdateEnabled=" + (autoUpdate.Checked ? "1" : "0") + "\r\n";
             var temp = iniPath + ".tmp";
             File.WriteAllText(temp, text, new UTF8Encoding(false));
