@@ -110,6 +110,7 @@ internal static class Program
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", config.AgentToken);
             var agentId = AgentIdentity.LoadOrCreate();
             client.DefaultRequestHeaders.Add("X-Print-Agent-Id", agentId);
+            RemoteConfig.SendSnapshot(client,config);
             status("Agent: " + Environment.MachineName + " (" + agentId[..8] + ")");
             status("Đang kết nối với Machine-Control");
             using var socket = new AgentSocket();
@@ -117,6 +118,7 @@ internal static class Program
             var lastHeartbeat = DateTime.MinValue;
             var nextUpdateCheck = DateTime.UtcNow;
             var nextRemoteUpdateCheck = DateTime.UtcNow;
+            var nextConfigCheck = DateTime.UtcNow;
             while (!cancel.IsCancellationRequested)
             {
                 if (DateTime.UtcNow - lastHeartbeat >= TimeSpan.FromSeconds(60))
@@ -135,6 +137,12 @@ internal static class Program
                         {
                             nextUpdateCheck = DateTime.UtcNow.AddHours(6);
                             if(AutoUpdate.TryStage(client,status,cancel))return 0;
+                        }
+                        // Lệnh cấu hình chỉ áp dụng lúc Agent rảnh; giữ lại token và URL cục bộ.
+                        if(DateTime.UtcNow >= nextConfigCheck)
+                        {
+                            nextConfigCheck=DateTime.UtcNow.AddSeconds(15);
+                            config=RemoteConfig.CheckAndApply(client,config,status);
                         }
                         // Lệnh Admin chỉ xử lý khi hàng đợi in trống; kiểm tra tối đa 30 giây/lần.
                         if (DateTime.UtcNow >= nextRemoteUpdateCheck)
