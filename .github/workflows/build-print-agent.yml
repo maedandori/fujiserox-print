@@ -22,7 +22,7 @@ jobs:
     name: Tạo hai EXE Windows 10
     runs-on: windows-2022
     env:
-      RELEASE_VERSION: 1.0.67
+      RELEASE_VERSION: 1.0.68
     steps:
       - name: Lấy mã nguồn
         uses: actions/checkout@v4
@@ -44,6 +44,25 @@ jobs:
           dotnet publish PrintSettings/PrintSettings.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -p:Version=${{ env.RELEASE_VERSION }} -o publish
           if (-not (Test-Path publish/Print-Agent.exe)) { throw "Thiếu Print-Agent.exe" }
           if (-not (Test-Path publish/Print-Settings.exe)) { throw "Thiếu Print-Settings.exe" }
+      - name: Tải SumatraPDF Portable chính thức và kiểm tra SHA-256
+        shell: pwsh
+        run: |
+          $url = 'https://www.sumatrapdfreader.org/dl/rel/3.6.1/SumatraPDF-3.6.1-64.zip'
+          $expected = '98b33a518d42986856d225064b0cd2d3643ecf78cbf84ab873d26cc51877a544'
+          Invoke-WebRequest -Uri $url -OutFile sumatra-portable.zip -MaximumRedirection 5
+          $actual = (Get-FileHash sumatra-portable.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "SHA-256 SumatraPDF không khớp" }
+          Expand-Archive sumatra-portable.zip -DestinationPath sumatra-portable -Force
+          $exe = Get-ChildItem sumatra-portable -Filter 'SumatraPDF-*.exe' -Recurse | Select-Object -First 1
+          if (-not $exe) { throw "Gói SumatraPDF không có Portable EXE" }
+          Copy-Item $exe.FullName publish/SumatraPDF.exe
+          @'
+          SumatraPDF Portable 3.6.1 (c) tác giả dự án SumatraPDF.
+          Trang chính thức: https://www.sumatrapdfreader.org/
+          Mã nguồn và giấy phép: https://github.com/sumatrapdfreader/sumatrapdf
+          Gói nguyên bản: https://www.sumatrapdfreader.org/dl/rel/3.6.1/SumatraPDF-3.6.1-64.zip
+          Phần mềm bên thứ ba có giấy phép riêng. Không áp dụng giấy phép Print Agent cho SumatraPDF.
+          '@ | Set-Content -Encoding utf8 publish/SUMATRA-NOTICE.txt
       - name: Đóng gói hướng dẫn và lệnh thử
         shell: pwsh
         run: |
@@ -61,6 +80,8 @@ jobs:
             version = '${{ env.RELEASE_VERSION }}'
             sha256 = $digest
             size = $asset.Length
+            sumatraSha256 = (Get-FileHash publish/SumatraPDF.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+            sumatraSize = (Get-Item publish/SumatraPDF.exe).Length
           } | ConvertTo-Json | Set-Content -Encoding utf8 update-manifest.json
       - name: Phát hành phiên bản mới trên GitHub Releases (repo private)
         if: github.event_name != 'pull_request'
@@ -69,7 +90,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = 'print-v${{ env.RELEASE_VERSION }}'
-          gh release create $tag Machine-Control-Print-Update.zip update-manifest.json --title "Print Agent v${{ env.RELEASE_VERSION }}" --notes "Cập nhật tự động cho Print Agent và Print Settings, giữ nguyên config.ini và agent-id.txt." --latest --target "${{ github.sha }}"
+          gh release create $tag Machine-Control-Print-Update.zip update-manifest.json publish/SumatraPDF.exe publish/SUMATRA-NOTICE.txt --title "Print Agent v${{ env.RELEASE_VERSION }}" --notes "Cập nhật tự động cho Print Agent và Print Settings, giữ nguyên config.ini và agent-id.txt." --latest --target "${{ github.sha }}"
       - name: Xuất hai ứng dụng Windows
         uses: actions/upload-artifact@v4
         with:
