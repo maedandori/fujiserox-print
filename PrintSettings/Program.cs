@@ -5,6 +5,7 @@ using System.Drawing.Printing;
 using System.Linq;
 using System.Text;
 using System.Windows.Forms;
+using Microsoft.Win32;
 
 internal static class Program
 {
@@ -27,6 +28,7 @@ internal sealed class SettingsForm : Form
     private readonly TextBox pdfFolder = new();
     private readonly TextBox printerDisplayName = new();
     private readonly CheckBox autoUpdate = new() { Text = "Tự động cập nhật khi Agent không in", AutoSize = true, Checked = true };
+    private readonly CheckBox startWithWindows = new() { Text = "Khởi động Print-Agent cùng Windows (khi đăng nhập)", AutoSize = true };
     private readonly Button languageButton = new() { AutoSize = true, Height = 36 };
     private static readonly System.Collections.Generic.Dictionary<string,string> Japanese = new()
     {
@@ -41,6 +43,7 @@ internal sealed class SettingsForm : Form
         ["Thư mục lưu PDF"]="PDF保存先",
         ["Chọn thư mục..."]="フォルダー選択...",
         ["Tự động cập nhật khi Agent không in"]="待機中に自動更新",
+        ["Khởi động Print-Agent cùng Windows (khi đăng nhập)"]="Windowsサインイン時にPrint-Agentを自動起動",
         ["Lưu cấu hình"]="設定を保存",
         ["Đóng"]="閉じる",
         ["Lưu config.ini cùng thư mục với hai ứng dụng. Agent cần chạy khi người dùng Windows đang đăng nhập và Excel 2013 đã được cài."]="設定はEXEと同じフォルダーに保存します。Windowsにサインインし、Excel 2013が必要です。",
@@ -76,17 +79,17 @@ internal sealed class SettingsForm : Form
     {
         Text = "Machine-Control - Cài đặt máy in (v"+(typeof(Program).Assembly.GetName().Version?.ToString(3)??"1.0.0")+")";
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(690, 580);
-        Size = new Size(800, 660);
+        MinimumSize = new Size(690, 625);
+        Size = new Size(800, 700);
         Font = new Font("Segoe UI", 10);
         var grid = new TableLayoutPanel {
-            Dock = DockStyle.Fill, Padding = new Padding(16), ColumnCount = 3, RowCount = 11,
+            Dock = DockStyle.Fill, Padding = new Padding(16), ColumnCount = 3, RowCount = 12,
             AutoSize = false
         };
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
-        for (int i = 0; i < 10; i++) grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 47));
+        for (int i = 0; i < 11; i++) grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 47));
         grid.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         url.Dock = token.Dock = printer.Dock = template.Dock = DockStyle.Fill;
@@ -135,7 +138,8 @@ internal sealed class SettingsForm : Form
         grid.Controls.Add(browsePdf, 2, 7);
         var note = new Label { Text = "Lưu config.ini cùng thư mục với hai ứng dụng. Agent cần chạy khi người dùng Windows đang đăng nhập và Excel 2013 đã được cài.", AutoSize = true, Dock = DockStyle.Fill };
         grid.Controls.Add(autoUpdate, 0, 8); grid.SetColumnSpan(autoUpdate, 3);
-        grid.Controls.Add(note, 0, 9); grid.SetColumnSpan(note, 3);
+        grid.Controls.Add(startWithWindows, 0, 9); grid.SetColumnSpan(startWithWindows, 3);
+        grid.Controls.Add(note, 0, 10); grid.SetColumnSpan(note, 3);
         var controls = new FlowLayoutPanel { FlowDirection = FlowDirection.RightToLeft, Dock = DockStyle.Fill };
         var save = new Button { Text = "Lưu cấu hình", AutoSize = true, Height = 36 };
         var close = new Button { Text = "Đóng", AutoSize = true, Height = 36 };
@@ -143,11 +147,12 @@ internal sealed class SettingsForm : Form
         close.Click += (_, _) => Close();
         languageButton.Click += (_,_) => { if (UiLanguage.Set(UiLanguage.Current=="ja"?"vi":"ja")) ApplyLanguage(); else MessageBox.Show(L("Không lưu được ngôn ngữ.","言語設定を保存できません。")); };
         controls.Controls.Add(save); controls.Controls.Add(close); controls.Controls.Add(languageButton);
-        grid.Controls.Add(controls, 0, 10); grid.SetColumnSpan(controls, 3);
+        grid.Controls.Add(controls, 0, 11); grid.SetColumnSpan(controls, 3);
         Controls.Add(grid);
         AcceptButton = save;
         RefreshPrinters("");
         LoadConfig();
+        startWithWindows.Checked = IsStartupEnabled();
         UpdatePdfInputs();
         ApplyLanguage();
     }
@@ -205,6 +210,27 @@ internal sealed class SettingsForm : Form
         }
     }
 
+    private const string StartupEntry = "MachineControlPrintAgent";
+    private static string AgentExePath => Path.Combine(AppContext.BaseDirectory, "Print-Agent.exe");
+    private static bool IsStartupEnabled()
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
+        var current = key?.GetValue(StartupEntry) as string;
+        return string.Equals(current, "\"" + AgentExePath + "\"", StringComparison.OrdinalIgnoreCase);
+    }
+    private static void ConfigureStartup(bool enabled)
+    {
+        using var key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true)
+            ?? throw new InvalidOperationException("Không mở được cấu hình Windows Startup.");
+        if (enabled)
+        {
+            if (!File.Exists(AgentExePath))
+                throw new FileNotFoundException("Không tìm thấy Print-Agent.exe cạnh Print-Settings.exe.", AgentExePath);
+            key.SetValue(StartupEntry, "\"" + AgentExePath + "\"", RegistryValueKind.String);
+        }
+        else key.DeleteValue(StartupEntry, false);
+    }
+
     private void SaveConfig()
     {
         try
@@ -236,6 +262,7 @@ internal sealed class SettingsForm : Form
             var temp = iniPath + ".tmp";
             File.WriteAllText(temp, text, new UTF8Encoding(false));
             File.Move(temp, iniPath, true);
+            ConfigureStartup(startWithWindows.Checked);
             MessageBox.Show(this, L("Đã lưu: ","保存しました: ") + iniPath + L("\nHãy khởi động lại Print-Agent.exe để áp dụng thay đổi.","\n変更を適用するには Print-Agent.exe を再起動してください。"), L("Thành công","保存完了"));
         }
         catch (Exception ex) { MessageBox.Show(this, ex.Message, L("Không lưu được","保存エラー"), MessageBoxButtons.OK, MessageBoxIcon.Error); }
