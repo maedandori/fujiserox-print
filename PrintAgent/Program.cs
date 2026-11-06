@@ -112,6 +112,8 @@ internal static class Program
             client.DefaultRequestHeaders.Add("X-Print-Agent-Id", agentId);
             status("Agent: " + Environment.MachineName + " (" + agentId[..8] + ")");
             status("Đang kết nối với Machine-Control");
+            using var socket = new AgentSocket();
+            socket.Start(baseUri, config.AgentToken, agentId, cancel);
             var lastHeartbeat = DateTime.MinValue;
             var nextUpdateCheck = DateTime.UtcNow;
             var nextRemoteUpdateCheck = DateTime.UtcNow;
@@ -156,8 +158,8 @@ internal static class Program
                             }
                             catch(Exception ex){Console.Error.WriteLine("Lỗi kiểm tra cập nhật từ Admin: "+ex.Message);}
                         }
-                        status("Đã kết nối - chờ lệnh in (v"+AutoUpdate.Version+")");
-                        if (cancel.WaitHandle.WaitOne(TimeSpan.FromSeconds(config.PollSeconds))) break;
+                        status("Đã kết nối - "+(socket.Connected ? "WebSocket" : "Polling dự phòng")+" (v"+AutoUpdate.Version+")");
+                        if (WaitForWork(cancel, socket, config.PollSeconds)) break;
                         continue;
                     }
                     response.EnsureSuccessStatusCode();
@@ -185,7 +187,7 @@ internal static class Program
                     status("Mất kết nối: " + error.Message);
                     Console.Error.WriteLine("Không lấy được lệnh in: " + error.Message);
                 }
-                if (cancel.WaitHandle.WaitOne(TimeSpan.FromSeconds(config.PollSeconds))) break;
+                if (WaitForWork(cancel, socket, config.PollSeconds)) break;
             }
             return 0;
         }
@@ -195,6 +197,16 @@ internal static class Program
             Console.Error.WriteLine("Lỗi cấu hình: " + error.Message);
             return 1;
         }
+    }
+
+    // WebSocket signals wake up the existing D1 claim loop. HTTP polling remains
+    // as a safety net for missed notifications or when connectivity is lost.
+    private static bool WaitForWork(CancellationToken cancel, AgentSocket socket, int fallbackSeconds)
+    {
+        var seconds = socket.Connected ? 25 : fallbackSeconds;
+        var index = WaitHandle.WaitAny(new[] { cancel.WaitHandle, socket.WakeHandle },
+            TimeSpan.FromSeconds(seconds));
+        return index == 0 || cancel.IsCancellationRequested;
     }
 
     private static void ReportRemoteUpdate(HttpClient client,string state,string? error)
