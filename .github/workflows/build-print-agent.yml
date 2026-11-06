@@ -22,7 +22,7 @@ jobs:
     name: Tạo hai EXE Windows 10
     runs-on: windows-2022
     env:
-      RELEASE_VERSION: 1.0.68
+      RELEASE_VERSION: 1.0.69
     steps:
       - name: Lấy mã nguồn
         uses: actions/checkout@v4
