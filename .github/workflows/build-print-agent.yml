@@ -1,6 +1,11 @@
 name: Build Machine-Control Print Apps
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'PrintAgent/**'
+      - 'PrintSettings/**'
+      - '.github/workflows/build-print-agent.yml'
   push:
     branches: [main]
     paths:
@@ -58,6 +63,7 @@ jobs:
             size = $asset.Length
           } | ConvertTo-Json | Set-Content -Encoding utf8 update-manifest.json
       - name: Phát hành phiên bản mới trên GitHub Releases (repo private)
+        if: github.event_name != 'pull_request'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
